@@ -1,0 +1,211 @@
+@import url('https://fonts.googleapis.com/css2?family=Bitter&family=Titillium+Web:wght@300&display=swap');
+
+html,
+#notebook {
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: 'Bitter', serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Titillium Web', sans-serif;
+}
+
+dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.25em 1em;
+}
+
+dt {
+    grid-column: 1 / 2;
+}
+
+dd {
+    grid-column: 2 / 3;
+}
+
+/* Estilos do primeiro parágrafo (contém img avatar) da primeira célula HTML */
+#MathJax_Message + .jp-Cell-inputWrapper:nth-of-type(2) p:first-of-type,
+.jp-Cell.jp-mod-rendered:first-of-type p:first-of-type,
+.text_cell.rendered:first-of-type p:first-of-type {
+    float: right;
+    max-width: 150px;
+}
+
+img[alt^="Avatar"] {
+    float: right;
+    border-radius: 50%;
+    max-width: 100%;
+    shape-outside: circle(50%);
+    animation: breething 5s ease-in-out 0s infinite alternate;
+    position: relative;
+}
+
+#MathJax_Message + .jp-Cell-inputWrapper:nth-of-type(2) p:first-of-type:hover img[alt^="Avatar"],
+.jp-Cell.jp-mod-rendered:first-of-type p:first-of-type:hover img[alt^="Avatar"],
+.text_cell.rendered:first-of-type p:first-of-type:hover img[alt^="Avatar"] {
+    transform-origin: center bottom;
+    animation: rotating 1s ease-in-out 0s 1,
+        jumping-up 0.1s ease-out 0.6s 1,
+        falling-down 0.1s ease-in 0.7s 1,
+        flattening 0.2s ease-out 0.8s 1; 
+}
+
+@keyframes breething {
+    from { transform: scale(1) }
+    to { transform: scale(0.975) }
+}
+
+@keyframes rotating {
+    from { transform: rotateY(0) }
+    to { transform: rotateY(3turn) }
+}
+
+@keyframes jumping-up {
+    from { top: 0 }
+    to { top: -200px }
+}
+
+@keyframes falling-down {
+    from { top: -200px }
+    to { top: 0 }
+}
+
+@keyframes flattening {
+    0% { 
+        transform: scaleY(0.8) scaleX(1.2);
+    }
+    33% {
+        transform: scaleY(1.1) scaleX(0.9);
+    }
+    67% {
+        transform: scaleY(0.95) scaleX(1.05);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+.jp-Cell.jp-mod-rendered .jp-RenderedMarkdown > h2,
+.text_cell.rendered .rendered_html > h2 {
+    border-bottom: 3px solid black;
+    padding-bottom: 0.25em;
+}
+
+/* Estilos da primeira célula HTML */
+#MathJax_Message + .jp-Cell-inputWrapper:nth-of-type(2),
+.jp-Cell.jp-mod-rendered:first-of-type,
+.text_cell.rendered:first-of-type {
+    position: relative;
+    overflow: hidden;
+}
+
+#MathJax_Message + .jp-Cell-inputWrapper:nth-of-type(2)::before,
+.jp-Cell.jp-mod-rendered:first-of-type::before,
+.text_cell.rendered:first-of-type::before {
+    content: "";
+    display: block;
+    position: absolute;
+    --blur-size: 0px;
+    top: calc(-3 * var(--blur-size));
+    right: calc(-3 * var(--blur-size));
+    bottom: calc(-3 * var(--blur-size));
+    left: calc(-3 * var(--blur-size));
+    pointer-events: none;
+    background-image: linear-gradient(45deg, #000000, #00b6ec), url(https://wallpaperaccess.com/full/869.jpg);
+    background-position: center;
+    filter: blur(var(--blur-size)) brightness(0.8);
+    background-blend-mode: hard-light;
+}
+
+#MathJax_Message + .jp-Cell-inputWrapper:nth-of-type(2)::before {
+    z-index: -1;
+}
+
+#MathJax_Message + .jp-Cell-inputWrapper:nth-of-type(2) .jp-RenderedMarkdown,
+.jp-Cell.jp-mod-rendered:first-of-type .jp-RenderedMarkdown,
+.text_cell.rendered:first-of-type .rendered_html {
+    color: white;
+}
+
+#MathJax_Message + .jp-Cell-inputWrapper:nth-of-type(2) .jp-RenderedMarkdown a:link,
+.jp-Cell.jp-mod-rendered:first-of-type .jp-RenderedMarkdown a:link,
+.text_cell.rendered:first-of-type .rendered_html a:link {
+    color: #3ea6ff;
+    text-decoration: none;
+}
+
+#MathJax_Message + .jp-Cell-inputWrapper:nth-of-type(2) .jp-RenderedMarkdown a:visited,
+.jp-Cell.jp-mod-rendered:first-of-type .jp-RenderedMarkdown a:visited,
+.text_cell.rendered:first-of-type .rendered_html a:visited {
+    color: #09ee42;
+}
+
+#MathJax_Message + .jp-Cell-inputWrapper:nth-of-type(2) .jp-RenderedMarkdown a:hover,
+.jp-Cell.jp-mod-rendered:first-of-type .jp-RenderedMarkdown a:hover,
+.text_cell.rendered:first-of-type .rendered_html a:hover {
+    background-color: #fff1;
+}
+
+#MathJax_Message + .jp-Cell-inputWrapper:nth-of-type(2) .jp-RenderedMarkdown ul,
+.jp-Cell.jp-mod-rendered:first-of-type ul,
+.text_cell.rendered:first-of-type ul {
+    display: flex;
+    list-style-type: none;
+    padding-left: 0;
+    gap: 0.5em;
+    text-align: center;
+}
+
+#MathJax_Message + .jp-Cell-inputWrapper:nth-of-type(2) .jp-RenderedMarkdown ul > li > a,
+.jp-Cell.jp-mod-rendered:first-of-type ul > li > a,
+.text_cell.rendered:first-of-type ul > li > a {
+    display: block;
+    border: 3px double #ffffff40;
+    border-radius: 5px;
+    padding: 0.25em 1em;
+}
+
+#MathJax_Message + .jp-Cell-inputWrapper:nth-of-type(2) .jp-RenderedMarkdown ul > li > ul,
+.jp-Cell.jp-mod-rendered:first-of-type ul > li > ul,
+.text_cell.rendered:first-of-type ul > li > ul {
+    opacity: 0;
+    text-align: left;
+    flex-direction: column;
+}
+
+#MathJax_Message + .jp-Cell-inputWrapper:nth-of-type(2) .jp-RenderedMarkdown ul > li > ul > li > a,
+.jp-Cell.jp-mod-rendered:first-of-type ul > li > ul > li > a,
+.text_cell.rendered:first-of-type ul > li > ul > li > a {
+    border-width: 0 0 3px 0;
+    gap: 0;
+    border-radius: 0;
+    padding: 0.25em 1em;
+}
+
+#MathJax_Message + .jp-Cell-inputWrapper:nth-of-type(2) .jp-RenderedMarkdown ul > li:hover > ul,
+.jp-Cell.jp-mod-rendered:first-of-type ul > li:hover > ul,
+.text_cell.rendered:first-of-type ul > li:hover > ul {
+    opacity: 1;
+}
+
+img[alt*="center"] {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+img[alt*="maxw300"] {
+    max-width: 300px;
+}
+
+img[alt*="maxw600"] {
+    max-width: 600px;
+}
+
+img[alt*="maxw700"] {
+    max-width: 700px;
+}

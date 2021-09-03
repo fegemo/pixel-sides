@@ -4,3 +4,6 @@ temp_images
 training_checkpoints
 bkp.ipynb
 __pycache__
+logs
+models
+temp_side2side
