@@ -1,3 +1,5 @@
+import Command from "./commands.js"
+
 class Tool {
   constructor(name, exclusionGroup, triggerElements, shortcut) {
     this.name = name
@@ -57,19 +59,32 @@ class Tool {
   deactivated() {
     throw new Error('Called abstract method "deactivated" of the Tool')
   }
+
+  get command() {
+    throw new Error('Called abstract getter "command" of the Tool')
+  }
 }
 
 export class Pencil extends Tool {
   constructor(elements) {
     super('Pencil', 'regular-tools', elements, 'P')
+    this.draw = this.draw.bind(this)
+  }
+
+  draw(e) {
+
   }
 
   activated() {
-
+    this.editor.canvas.addEventListener('click', this.draw)
+  }
+  
+  deactivated() {
+    this.editor.canvas.removeEventListener('click', this.draw)
   }
 
-  deactivated() {
-
+  get command() {
+    
   }
 }
 
