@@ -1,0 +1,68 @@
+@import url('https://fonts.googleapis.com/css2?family=Abel&family=Share+Tech+Mono&display=swap');
+:root {
+  --highlight-fg-color: cornflowerblue;
+  --primary-text-color: whitesmoke;
+  --primary-bg-color: #333;
+  --secondary-bg-color: #666;
+  --sans-font: "Abel", sans-serif;
+  --mono-font: "Share Tech Mono", monospace;
+  --tool-button-bg-color: #fff3;
+  --checker-color-1: white;
+  --checker-color-2: silver;
+}
+
+body {
+  background-color: var(--primary-bg-color);
+  font-family: var(--sans-font);
+  color: var(--primary-text-color)
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--mono-font);
+  margin: 0;
+}
+
+.tool-list>li {
+  background-color: var(--tool-button-bg-color);
+  position: relative;
+}
+
+#page-header {
+  padding: 0.75em 1em;
+}
+
+#main-canvas-section {
+  background-color: var(--secondary-bg-color);
+  border-radius: 5px 5px 0 0;
+}
+
+.checkerboard-background, #main-canvas {
+  background-image: repeating-conic-gradient(var(--checker-color-1) 0% 25%, var(--checker-color-2) 0% 50%);
+  background-size: calc(var(--other-canvas-size) / 10) calc(var(--other-canvas-size) / 10);
+  background-position: center;
+}
+
+#colors input {
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+}
+
+.active-tool::before {
+  content: "";
+  display: block;
+  position: absolute;
+  inset: 0;
+  border: 3px solid var(--highlight-fg-color);
+}
+
+#main-canvas {
+  image-rendering: pixelated;
+  background-size: calc(var(--other-canvas-size) / 86) calc(var(--other-canvas-size) / 86);
+  transition: all 200ms ease;
+  transform: scale(1);
+}
+
+#mouse-stats {
+  text-shadow: 1px 1px #000;
+}
