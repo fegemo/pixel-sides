@@ -6,4 +6,7 @@ bkp.ipynb
 __pycache__
 logs
 models
-temp_side2side
+temp-side2side
+temp
+.vscode
+venv

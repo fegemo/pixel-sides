@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pixel Sides (POC)</title>
+  <link rel="stylesheet" href="main.css">
+  <script src="main.js" type="module" defer></script>
+</head>
+
+<body>
+  <header>
+    <h1>Pixel Sides</h1>
+  </header>
+  <main>
+    <progress id="model-load-progress" value="0" max="1"></progress>
+    <p>Choose a character image (64x64x4) facing front and generate an image of it facing right.</p>
+    <input type="file" id="input-file">
+    <canvas id="input-image" class="image" width="64" height="64"></canvas>
+    <canvas id="output-image-1" class="image" width="64" height="64"></canvas>
+    <canvas id="output-image-2" class="image" width="64" height="64"></canvas>
+    <canvas id="output-image-3" class="image" width="64" height="64"></canvas>
+    <button id="load-model">Load</button>
+    <button id="generate">Generate</button>
+  </main>
+  <footer>
+    <p>Project: Pixel Sides (POC)</p>
+  </footer>
+</body>
+
+</html>

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sprite Editor - Pixel Sides</title>
+  <link rel="stylesheet" href="layout.css">
+  <link rel="stylesheet" href="design.css">
+  <link rel="shortcut icon" href="../docs/favicon.png">
+  <script defer src="js/main.js" type="module"></script>
+</head>
+<body>
+  <main>
+    <header id="page-header">
+      <h1>Sprite Editor</h1>
+    </header>
+    <section id="tools-section">
+      <ul id="tools" class="tool-list">
+        <li id="pencil-tool">Pencil</li>
+        <li id="bucket-tool">Bucket</li>
+        <li id="rectangle-tool">Rectangle</li>
+        <li id="ellipsis-tool">Ellipsis</li>
+        <li id="color-selection-tool">Color selection</li>
+        <li id="rectangle-selection-tool">Rectangle selection</li>
+      </ul>
+      <ul id="colors" class="tool-list">
+        <li id="primary-color" class="swatch">
+          <input type="color" value="#ffffff">
+        </li>
+        <li id="secondary-color" class="swatch">
+            <input type="color" value="#000000">
+        </li>
+      </ul>
+      <ul id="pallete" class="swatch-list">
+        <li></li>
+        <li></li>
+        <li></li>
+        <li></li>
+        <li></li>
+        <li></li>
+        <li></li>
+        <li></li>
+      </ul>
+    </section>
+    <section id="options-section"></section>
+    <section id="main-canvas-section">
+      <canvas id="main-canvas" class="checkerboard-background"></canvas>
+      <aside id="mouse-stats">
+        <div>
+          Zoom: <span id="zoom"></span>
+        </div>
+        <div>
+          <span id="x-mouse"></span> x
+          <span id="y-mouse"></span>
+        </div>
+      </aside>
+    </section>
+    <section id="other-canvases-section">
+      <div class="other-canvas-container">
+        <div id="other-canvas-1" class="other-canvas checkerboard-background"></div>
+      </div>
+      <div class="other-canvas-container">
+        <div id="other-canvas-2" class="other-canvas checkerboard-background"></div>
+      </div>
+      <div class="other-canvas-container">
+        <div id="other-canvas-3" class="other-canvas checkerboard-background"></div>
+      </div>
+      <div class="other-canvas-container">
+        <div id="other-canvas-4" class="other-canvas checkerboard-background"></div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
