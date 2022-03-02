@@ -9,6 +9,7 @@ from IPython import display
 import io_utils
 from configuration import *
 import frechet_inception_distance as fid
+from custom_layers import MaxPoolingWithArgmax2D, MaxUnpooling2D
 
 class S2SModel(abc.ABC):
     def __init__(self, train_ds, test_ds, model_name, architecture_name="s2smodel"):
@@ -243,26 +244,64 @@ class Pix2PixModel(S2SModel):
         if num_patches > 30:
             raise ValueError(f"num_patches for the discriminator should not exceed 30, but {num_patches} was given")
  
-        down = Pix2PixModel.downsample(64, 4, False)(x)  # (batch_size, 32, 32, 64)
-        current_patches = 30
-        next_layer_filters = 64*2
-        while current_patches > max(num_patches, 2):
-            print(f"Created downsample with {next_layer_filters}")
-            down = Pix2PixModel.downsample(next_layer_filters, 4)(down)
-            current_patches = ((current_patches+2) / 2) - 2
-            next_layer_filters *= 2
-            print(f"current_patches now {current_patches}")
+        # down = Pix2PixModel.downsample(64, 4, False)(x)  # (batch_size, 32, 32, 64)
+        # current_patches = 30
+        # next_layer_filters = 64*2
+        # while current_patches > max(num_patches, 2):
+        #     print(f"Created downsample with {next_layer_filters}")
+        #     down = Pix2PixModel.downsample(next_layer_filters, 4)(down)
+        #     current_patches = ((current_patches+2) / 2) - 2
+        #     next_layer_filters *= 2
+        #     print(f"current_patches now {current_patches}")
+        down = Pix2PixModel.downsample(8, 4, False)(x)  # (batch_size, 32, 32, 64)
+
+        down = layers.ZeroPadding2D()(down)  # (batch_size, 34, 34, 64)
+        down = layers.Conv2D(8, 2, strides=1, kernel_initializer=initializer)(down)
+        down = layers.BatchNormalization()(down)
+        down = layers.LeakyReLU()(down)
+
+        down = layers.ZeroPadding2D()(down)  # (batch_size, 34, 34, 64)
+        down = layers.Conv2D(16, 2, strides=1, kernel_initializer=initializer)(down)
+        down = layers.BatchNormalization()(down)
+        down = layers.LeakyReLU()(down)
+        down = layers.Dropout(0.5)(down)
+
+        down = layers.ZeroPadding2D()(down)  # (batch_size, 34, 34, 64)
+        down = layers.Conv2D(16, 4, strides=1, kernel_initializer=initializer)(down)
+        down = layers.BatchNormalization()(down)
+        down = layers.LeakyReLU()(down)
+
+        down = layers.ZeroPadding2D()(down)  # (batch_size, 34, 34, 64)
+        down = layers.Conv2D(32, 2, strides=1, kernel_initializer=initializer)(down)
+        down = layers.BatchNormalization()(down)
+        down = layers.LeakyReLU()(down)
+        down = layers.Dropout(0.5)(down)
+
+        down = layers.ZeroPadding2D()(down)  # (batch_size, 34, 34, 64)
+        down = layers.Conv2D(32, 4, strides=1, kernel_initializer=initializer)(down)
+        down = layers.BatchNormalization()(down)
+        down = layers.LeakyReLU()(down)
+
+        down = layers.ZeroPadding2D()(down)  # (batch_size, 34, 34, 64)
+        down = layers.Conv2D(64, 4, strides=1, kernel_initializer=initializer)(down)
+        down = layers.BatchNormalization()(down)
+        down = layers.LeakyReLU()(down)
+        down = layers.Dropout(0.5)(down)
+
+        down = layers.ZeroPadding2D()(down)  # (batch_size, 34, 34, 64)
+        down = layers.Conv2D(64, 3, strides=1, kernel_initializer=initializer)(down)
+        down = layers.BatchNormalization()(down)
+        down = layers.LeakyReLU()(down)        
         
         zero_pad1 = layers.ZeroPadding2D()(down)  # (batch_size, 34, 34, 64)
-
-        conv = layers.Conv2D(next_layer_filters, 4, strides=1,
+        conv = layers.Conv2D(128, 4, strides=1,
                                     kernel_initializer=initializer,
                                     use_bias=False)(zero_pad1)  # (batch_size, 31, 31, 128)
         batchnorm1 = layers.BatchNormalization()(conv)
         leaky_relu = layers.LeakyReLU()(batchnorm1)
 
         zero_pad2 = layers.ZeroPadding2D()(leaky_relu)  # (batch_size, 33, 33, 128)
-        last_filter_size = 4 if num_patches > 1 else 5
+        last_filter_size = 4#4 if num_patches > 1 else 5
         last = layers.Conv2D(1, last_filter_size, strides=1,
                                 kernel_initializer=initializer)(zero_pad2)  # (batch_size, 30, 30, 1)
 
@@ -373,6 +412,94 @@ class Pix2PixModel(S2SModel):
         #     except:
         #         pass
 
+        
+class Pix2PixSegNetModel(Pix2PixModel):
+    def __init__(self, train_ds, test_ds, model_name, architecture_name="pix2pix-segnet", LAMBDA=100):
+        super().__init__(train_ds, test_ds, model_name, architecture_name, LAMBDA=LAMBDA)
+    
+#     def Generator():
+#         pass
+    
+    @staticmethod
+    def downsample_segnet(inputs, filters, size, convolution_steps=2, apply_batchnorm=True):
+        initializer = tf.random_normal_initializer(0., 0.02)
+
+        x = inputs
+        for i in range(convolution_steps):
+            x = layers.Conv2D(
+                filters,
+                size,
+                strides=1,
+                padding="same",
+                kernel_initializer=initializer)(x)
+
+            x = layers.BatchNormalization()(x)
+            x = layers.ReLU()(x)
+
+
+        x, indices = MaxPoolingWithArgmax2D(pool_size=2)(x)
+        # x, indices = tf.raw_ops.MaxPoolWithArgmax(input=x, ksize=[size, size], strides=[2, 2], padding="valid", Targmax=tf.dtypes.int32)
+        return x, indices
+
+
+    @staticmethod
+    def upsample_segnet(inputs, filters, size, convolution_steps=2, apply_dropout=False):
+        initializer = tf.random_normal_initializer(0., 0.02)
+
+        x, indices = inputs
+        # print(f"x is {x}")
+        # print(f"indices is {indices}")
+        x = MaxUnpooling2D(size=2)([x, indices])
+        # x = tfa.layers.MaxUnpooling2D(pool_size=size)([x, indices])
+
+        for i in range(convolution_steps):
+            x = layers.Conv2D(filters, size, strides=1,
+                                padding="same",
+                                kernel_initializer=initializer
+                             )(x)
+            x = layers.BatchNormalization()(x)
+            x = layers.ReLU()(x)
+
+        if apply_dropout:
+            x = layers.Dropout(0.5)(x)
+
+        # print(f"shape of x after upsample: {tf.shape(x)}")
+        return x
+    
+    def Discriminator(self, num_patches):
+        initializer = tf.random_normal_initializer(0., 0.02)
+
+        input = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="input_image")
+        target = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="target_image")
+
+        inputs = layers.concatenate([input, target])  # (batch_size, 64, 64, channels*2)
+
+        output = Pix2PixSegNetModel.downsample_segnet(inputs, 64, 4, 2),  # (batch_size, 32, 32, 64)
+        x, indices0 = output[0][0], output[0][1]
+        output = Pix2PixSegNetModel.downsample_segnet(x, 128, 4, 1),  # (batch_size, 16, 16, 128)
+        x, indices1 = output[0][0], output[0][1]
+        output = Pix2PixSegNetModel.downsample_segnet(x, 256, 4, 2),  # (batch_size, 8, 8, 256)
+        x, indices2 = output[0][0], output[0][1]
+        output = Pix2PixSegNetModel.downsample_segnet(x, 512, 4, 1),  # (batch_size, 4, 4, 512)
+        x, indices3 = output[0][0], output[0][1]
+
+
+        x = Pix2PixSegNetModel.upsample_segnet([x, indices3], 256, 4, 3, apply_dropout=True),  # (batch_size, 8, 8, 512)
+        x = Pix2PixSegNetModel.upsample_segnet([x, indices2], 128, 4, 3),  # (batch_size, 16, 16, 512)
+        x = Pix2PixSegNetModel.upsample_segnet([x, indices1], 64, 4, 2),  # (batch_size, 32, 32, 256)
+
+        last = layers.Conv2D(1, 3, strides=1,
+                                padding="valid",
+                                kernel_initializer=initializer)
+
+
+
+        x = last(x[0])
+
+        return tf.keras.Model(inputs=[input, target], outputs=x)
+    
+    
+    
 class Pix2PixFFTModel(Pix2PixModel):
     def __init__(self, train_ds, test_ds, model_name, architecture_name="pix2pix-fft", LAMBDA_L1=100, LAMBDA_FFT=100):
         super().__init__(train_ds, test_ds, model_name, architecture_name, LAMBDA=LAMBDA_L1)

@@ -67,6 +67,7 @@ numpy==1.22.2
 oauthlib==3.2.0
 opt-einsum==3.3.0
 packaging==21.3
+pandas==1.4.1
 pandocfilters==1.5.0
 parso==0.8.3
 pathspec==0.9.0
@@ -95,6 +96,7 @@ rsa==4.8
 scikit-image==0.19.2
 scikit-learn==1.0.2
 scipy==1.8.0
+seaborn==0.11.2
 Send2Trash==1.8.0
 six==1.16.0
 sniffio==1.2.0
@@ -103,6 +105,7 @@ tensorboard==2.8.0
 tensorboard-data-server==0.6.1
 tensorboard-plugin-wit==1.8.1
 tensorflow==2.8.0
+tensorflow-addons==0.16.1
 tensorflow-io-gcs-filesystem==0.24.0
 termcolor==1.1.0
 terminado==0.13.1
@@ -113,6 +116,7 @@ tifffile==2022.2.9
 tomli==2.0.1
 tornado==6.1
 traitlets==5.1.1
+typeguard==2.13.3
 typing_extensions==4.1.1
 urllib3==1.26.8
 wcwidth==0.2.5
