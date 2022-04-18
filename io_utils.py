@@ -23,6 +23,55 @@ def ensure_folder_structure(*folders):
 def delete_folder(path):
     shutil.rmtree(path, ignore_errors=True)
 
+    
+    
+def random_domain_label(batch_size=BATCH_SIZE):
+    random_domain = tf.random.uniform(shape=[batch_size,], minval=0, maxval=NUMBER_OF_DOMAINS, dtype="int32")
+    onehot_domain_label = tf.one_hot(random_domain, NUMBER_OF_DOMAINS)
+    return onehot_domain_label
+
+def channelize_domain_label(onehot_domain_label):
+    channelized_domain_label = onehot_domain_label[:, tf.newaxis, tf.newaxis, :]
+    channelized_domain_label = tf.tile(channelized_domain_label, [1, IMG_SIZE, IMG_SIZE, 1])
+    return channelized_domain_label
+
+def concat_image_and_domain_label(image, onehot_label):
+    channelized_domain_label = channelize_domain_label(onehot_label)
+    return tf.concat([image, channelized_domain_label], axis=-1)
+
+# def random_pair(images_and_labels_batch):
+#     random_source_indices = tf.random.uniform(shape=[BATCH_SIZE,], minval=0, maxval=NUMBER_OF_DOMAINS, dtype="int32")
+#     random_target_indices = tf.random.uniform(shape=[BATCH_SIZE,], minval=0, maxval=NUMBER_OF_DOMAINS, dtype="int32")
+#     # tf.print("random_source_indices", random_source_indices)
+#     # tf.print("images_and_labels", images_and_labels_batch)
+#     print("random_source_indices", random_source_indices)
+#     # print("images_and_labels", images_and_labels_batch)
+    
+    
+#     # for images_and_labels in images_and_labels_batch:
+#     print("type(images....)", type(images_and_labels_batch))
+#     print("images_and_labels_batch[0]", images_and_labels_batch[0])
+#     print("images_and_labels_batch[1]", images_and_labels_batch[1])
+#     random_source_image = tf.gather(images_and_labels_batch, random_source_indices, axis=0)
+#     random_source_domain = tf.one_hot(random_source_indices, NUMBER_OF_DOMAINS)
+    
+#     # random_source = images_and_labels[random_source_indices]
+#     random_target_image = tf.gather(images_and_labels_batch, random_target_indices)
+#     random_target_domain = tf.one_hot(random_target_indices, NUMBER_OF_DOMAINS)
+    
+#     return (random_source_image, random_source_domain), (random_target_image, random_target_domain)
+
+# def random_pair_out(images_and_labels):
+#     random_source_index = np.random.randint(0, NUMBER_OF_DOMAINS)
+#     random_target_index = np.random.randint(0, NUMBER_OF_DOMAINS)
+#     # tf.print("random_source_index", random_source_index)
+#     # tf.print("images_and_labels", images_and_labels)
+#     # print("random_source_index", random_source_index)
+#     # print("images_and_labels", images_and_labels)
+#     random_source = images_and_labels[random_source_index]
+#     random_target = images_and_labels[random_target_index]
+#     return random_source, random_target
+
 
 def plot_to_image(matplotlib_figure, channels=OUTPUT_CHANNELS):
     """Converts the matplotlib plot specified by 'figure' to a PNG image and
@@ -41,112 +90,72 @@ def plot_to_image(matplotlib_figure, channels=OUTPUT_CHANNELS):
     return image
     
 
-# invoca o gerador e mostra a imagem de entrada, sua imagem objetivo e a imagem gerada
-def generate_comparison_input_target_generated(model, examples, save_name=None, step=None, predicted_images=None):
-    num_images = len(examples)
-    num_columns = 3
 
-    title = ["Input", "Target", "Generated"]
-    if step != None:
-        title[-1] += f" ({step/1000}k)"
 
-    figure = plt.figure(figsize=(4*num_columns, 4*num_images))
 
-    if predicted_images == None:
-        predicted_images = []
 
-    for i, (input_image, target_image) in enumerate(examples):
-        if i >= len(predicted_images):
-            predicted_images.append(model(input_image, training=True))
 
-        images = [input_image, target_image, predicted_images[i]]
-        for j in range(num_columns):
-            idx = i*num_columns + j+1
-            plt.subplot(num_images, num_columns, idx)
-            plt.title(title[j] if i == 0 else "", fontdict={"fontsize": 24})
-            plt.imshow(tf.squeeze(images[j]) * 0.5 + 0.5)
-            plt.axis("off")
+
+# # generates images depicting what the discriminator thinks of a target image and a generated image - 
+# # how did it find each one's patches as real or fake
+# def generate_discriminated_image(input_image, target_image, discriminator, generator, invert_discriminator_value=False):
+#     generated_image = generator(input_image, training=True)
+
+#     discriminated_target_image = tf.math.sigmoid(tf.squeeze(discriminator([input_image, target_image], training=True), axis=[0]))
+#     discriminated_generated_image = tf.math.sigmoid(tf.squeeze(discriminator([input_image, generated_image], training=True), axis=[0]))
+#     if invert_discriminator_value:
+#         discriminated_target_image = 1. - discriminated_target_image 
+#         discriminated_generated_image = 1. - discriminated_generated_image 
     
-    figure.tight_layout()
+#     # print(f"discriminated_target_image.shape {tf.shape(discriminated_target_image)}")
 
-    if save_name != None:
-        plt.savefig(save_name)
+#     patches = tf.shape(discriminated_target_image).numpy()[0]
+#     lower_bound_scaling_factor = IMG_SIZE // patches
+#     # print(f"lower_bound_scaling_factor {lower_bound_scaling_factor}, shape {tf.shape(discriminated_target_image).numpy()}")
+#     pad_before = (IMG_SIZE - patches*lower_bound_scaling_factor)//2
+#     pad_after = (IMG_SIZE - patches*lower_bound_scaling_factor) - pad_before
+#     # print(f"pad_before {pad_before}, pad_after {pad_after}")
+#     discriminated_target_image = tf.repeat(tf.repeat(discriminated_target_image, lower_bound_scaling_factor, axis=0), lower_bound_scaling_factor, axis=1)
+#     # print(f"discriminated_target_image.shape {tf.shape(discriminated_target_image)} - after repeat")
+#     discriminated_target_image = tf.pad(discriminated_target_image, [[pad_before, pad_after], [pad_before, pad_after], [0, 0]])
+#     # print(f"discriminated_target_image.shape {tf.shape(discriminated_target_image)} - after pad")
 
-    # cannot call show otherwise it flushes and empties the figure, sending to tensorboard
-    # only a blank image... hence, let us just display the saved image
-    display(figure)
-    # plt.show()
+#     discriminated_generated_image = tf.repeat(tf.repeat(discriminated_generated_image, lower_bound_scaling_factor, axis=0), lower_bound_scaling_factor, axis=1)
+#     discriminated_generated_image = tf.pad(discriminated_generated_image, [[pad_before, pad_after], [pad_before, pad_after], [0, 0]])
 
-    return figure
-
-    
-
-# generates images depicting what the discriminator thinks of a target image and a generated image - 
-# how did it find each one's patches as real or fake
-def generate_discriminated_image(input_image, target_image, discriminator, generator, invert_discriminator_value=False):
-    generated_image = generator(input_image, training=True)
-
-    discriminated_target_image = tf.math.sigmoid(tf.squeeze(discriminator([input_image, target_image], training=True), axis=[0]))
-    discriminated_generated_image = tf.math.sigmoid(tf.squeeze(discriminator([input_image, generated_image], training=True), axis=[0]))
-    if invert_discriminator_value:
-        discriminated_target_image = 1. - discriminated_target_image 
-        discriminated_generated_image = 1. - discriminated_generated_image 
-    
-    # print(f"discriminated_target_image.shape {tf.shape(discriminated_target_image)}")
-
-    patches = tf.shape(discriminated_target_image).numpy()[0]
-    lower_bound_scaling_factor = IMG_SIZE // patches
-    # print(f"lower_bound_scaling_factor {lower_bound_scaling_factor}, shape {tf.shape(discriminated_target_image).numpy()}")
-    pad_before = (IMG_SIZE - patches*lower_bound_scaling_factor)//2
-    pad_after = (IMG_SIZE - patches*lower_bound_scaling_factor) - pad_before
-    # print(f"pad_before {pad_before}, pad_after {pad_after}")
-    discriminated_target_image = tf.repeat(tf.repeat(discriminated_target_image, lower_bound_scaling_factor, axis=0), lower_bound_scaling_factor, axis=1)
-    # print(f"discriminated_target_image.shape {tf.shape(discriminated_target_image)} - after repeat")
-    discriminated_target_image = tf.pad(discriminated_target_image, [[pad_before, pad_after], [pad_before, pad_after], [0, 0]])
-    # print(f"discriminated_target_image.shape {tf.shape(discriminated_target_image)} - after pad")
-
-    discriminated_generated_image = tf.repeat(tf.repeat(discriminated_generated_image, lower_bound_scaling_factor, axis=0), lower_bound_scaling_factor, axis=1)
-    discriminated_generated_image = tf.pad(discriminated_generated_image, [[pad_before, pad_after], [pad_before, pad_after], [0, 0]])
-
-    generated_image = tf.squeeze(generated_image)
-    target_image = tf.squeeze(target_image)
+#     generated_image = tf.squeeze(generated_image)
+#     target_image = tf.squeeze(target_image)
 
 
-    figure = plt.figure(figsize=(8*2, 8*2))
-    for i, (image, disc_output, image_label, output_label) in enumerate(zip([target_image, generated_image], [discriminated_target_image, discriminated_generated_image], ["Target", "Generated"], ["Discriminated target", "Discriminated generated"])):
-        plt.subplot(2, 2, i*2 + 1)
-        plt.title(image_label, fontdict={"fontsize": 28})
-        plt.imshow(image * 0.5 + 0.5)
-        plt.axis("off")
+#     figure = plt.figure(figsize=(6*2, 6*2))
+#     for i, (image, disc_output, image_label, output_label) in enumerate(zip([target_image, generated_image], [discriminated_target_image, discriminated_generated_image], ["Target", "Generated"], ["Discriminated target", "Discriminated generated"])):
+#         plt.subplot(2, 2, i*2 + 1)
+#         plt.title(image_label, fontdict={"fontsize": 20})
+#         plt.imshow(image * 0.5 + 0.5)
+#         plt.axis("off")
 
-        plt.subplot(2, 2, i*2 + 2)
-        plt.title(output_label, fontdict={"fontsize": 28})
-        plt.imshow(disc_output, cmap="gray", vmin=0.0, vmax=1.0)
-        plt.axis("off")
+#         plt.subplot(2, 2, i*2 + 2)
+#         plt.title(output_label, fontdict={"fontsize": 20})
+#         plt.imshow(disc_output, cmap="gray", vmin=0.0, vmax=1.0)
+#         plt.axis("off")
 
     
-    plt.show()
-    # print(discriminated_generated_image)
+#     plt.show()
+#     # print(discriminated_generated_image)
     
     
-# !!!!!!!
-# parei de usar pq o report_fid não está mais precisando dos arquivos no file system
-def generate_test_images_and_comparisons_OUTTTTTTTT(images, generated_image, number, architecture_name, model_name, steps):
-    display_images = [images[0], images[1], generated_image[0]]
-    pre_path = os.sep.join([TEMP_FOLDER, "test-dataset-output", architecture_name, model_name])
-    delete_folder(pre_path)
-    save_paths = [os.sep.join([pre_path, folder]) for folder in ["input", "target", "generated"]]
-    for path in save_paths:
-        ensure_folder_structure(path)
-    
-    for i, (image, path) in enumerate(zip(display_images, save_paths)):
-        plt.figure(figsize=(8, 8))
-        plt.imshow(image * 0.5 + 0.5)
-        plt.axis("off")
-        plt.savefig(os.sep.join([path, f"{number}.png"]))
-        plt.close()
-        image_path = os.sep.join([pre_path, f"{number}.png"])
-    
-    generate_comparison_input_target_generated(None, images, image_path, steps, generated_image)
 
-
+def seconds_to_human_readable(time):
+    days = time // 86400         # (60 * 60 * 24)
+    hours = time // 3600 % 24    # (60 * 60) % 24
+    minutes = time // 60 % 60 
+    seconds = time % 60
+    
+    time_string = ""
+    if days > 0:
+        time_string += f"{days:.0f} day{'s' if days > 1 else ''}, "
+    if hours > 0 or days > 0:
+        time_string += f"{hours:02.0f}h:"
+    time_string += f"{minutes:02.0f}m:{seconds:02.0f}s"
+    
+    return time_string

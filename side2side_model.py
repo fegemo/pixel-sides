@@ -1,0 +1,228 @@
+from abc import ABC, abstractmethod
+import tensorflow as tf
+import time
+import datetime
+from IPython import display
+from matplotlib import pyplot as plt
+
+import io_utils
+from configuration import *
+import frechet_inception_distance as fid
+
+
+def show_eta(training_start_time, step_start_time, current_step, training_starting_step, total_steps,
+             update_steps):
+    now = time.time()
+    elapsed = now - training_start_time
+    steps_so_far = tf.cast(current_step - training_starting_step, tf.float32)
+    elapsed_per_step = elapsed / (steps_so_far + 1.)
+    remaining_steps = total_steps - steps_so_far
+    eta = elapsed_per_step * remaining_steps
+
+    print(f"Time since start: {io_utils.seconds_to_human_readable(elapsed)}")
+    print(f"Estimated time to finish: {io_utils.seconds_to_human_readable(eta.numpy())}")
+    print(f"Last {update_steps} steps took: {now - step_start_time:.2f}s\n")
+
+
+class S2SModel(ABC):
+    def __init__(self, train_ds, test_ds, model_name, architecture_name="s2smodel"):
+        """
+        Params:
+        - train_ds: the dataset used for training. Should have target images as labels
+        - test_ds: dataset used for validation. Should have target images as labels
+        - model_name: the specific direction of source to target image (eg, front2right).
+                      Should be path-friendly
+        - architecture_name: the network architecture + variation used (eg, pix2pix, pix2pix-wgan).
+                             Should be path-friendly
+        """
+        self.generator = None
+        self.discriminator = None
+
+        self.train_ds = train_ds
+        self.test_ds = test_ds
+        self.model_name = model_name
+        self.architecture_name = architecture_name
+        self.checkpoint_dir = os.sep.join(
+            [TEMP_FOLDER, "training-checkpoints", self.architecture_name, self.model_name])
+        # WGAN's sigmoid(critic) outputs 0 when it is sure a patch is real
+        # but GAN's sigmoid(discriminator) outputs 1... so WGAN should invert: 1 - value
+        # when showing the debug of the discriminator/critic output
+        self.invert_discriminator_value = False
+
+    def predict(self, images, **kwargs):
+        pass
+
+    def fit(self, steps, update_steps, callbacks=[], starting_step=0):
+        if starting_step == 0:
+            self.log_folders = [TEMP_FOLDER, "logs", self.architecture_name, self.model_name]
+            self.now_string = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            self.summary_writer = tf.summary.create_file_writer(os.sep.join([*self.log_folders, self.now_string]))
+
+        try:
+            self.do_fit(steps, update_steps, callbacks, starting_step)
+        finally:
+            self.summary_writer.flush()
+
+    def do_fit(self, steps, update_steps=1000, callbacks=[], starting_step=0):
+        examples = self.select_examples()
+
+        training_start_time = time.time()
+        step_start_time = training_start_time
+
+        # try:
+        #     tf.profiler.experimental.start("tblogdir")
+        for step, batch in self.train_ds.repeat().take(steps).enumerate():
+            step += starting_step
+            # with tf.profiler.experimental.Trace("train", step_num=step):
+
+            # every UPDATE_STEPS and in the beginning, visualize 5x images to see
+            # how training is going...
+            if (step + 1) % update_steps == 0 or step == 0:
+                display.clear_output(wait=True)
+
+                if step != 0:
+                    show_eta(training_start_time, step_start_time, step, starting_step, steps, update_steps)
+
+                step_start_time = time.time()
+
+                with self.summary_writer.as_default():
+                    save_image_name = os.sep.join(
+                        [TEMP_FOLDER, "logs", self.architecture_name, self.model_name, self.now_string,
+                         "step_{:06d}.png".format(step + 1)])
+                    image_data = self.generate_comparison(examples, save_image_name, step + 1)
+                    image_data = io_utils.plot_to_image(image_data)
+                    tf.summary.image(save_image_name, image_data, step=(step + 1) // update_steps, max_outputs=5)
+
+                if "fid" in callbacks:
+                    print(
+                        f"Calculating Fréchet Inception Distance at {(step + 1) / 1000}k with {TEST_SIZE} test examples...",
+                        end="", flush=True)
+                    fid = self.report_fid(step=(step + 1) // update_steps)
+                    print(f" FID: {fid:.5f}")
+                if "show_patches" in callbacks:
+                    print(f"Showing discriminator patches")
+                    self.show_discriminated_images()
+
+                print(f"Step: {(step + 1) / 1000}k")
+                if step - starting_step < steps - 1:
+                    print("˯" * (update_steps // 10))
+
+            # actually TRAIN
+            self.train_step(batch, step, update_steps)
+
+            # dot feedback for every 10 training steps
+            if (step + 1) % 10 == 0 and step - starting_step < steps - 1:
+                print(".", end="", flush=True)
+
+            # saves a training checkpoint UPDATE_STEPS*5
+            if (step + 1) % (update_steps * 5) == 0 or (step - starting_step + 1) == steps:
+                self.checkpoint_manager.save()
+
+        # finally:
+        #     try:
+        #         tf.profiler.experimental.stop()
+        #     except:
+        #         pass
+
+    @abstractmethod
+    def train_step(self, batch, step, UPDATE_STEPS):
+        pass
+
+    @abstractmethod
+    def select_examples(self, number_of_examples=5):
+        pass
+
+    @abstractmethod
+    def generate_comparison(self):
+        pass
+
+    @abstractmethod
+    def select_real_and_fake_images_for_fid(self, num_images):
+        pass
+
+    def report_fid(self, num_images=TEST_SIZE, step=None):
+        real_images, fake_images = self.select_real_and_fake_images_for_fid(num_images)
+        value = fid.compare(real_images, fake_images)
+
+        if hasattr(self, "summary_writer") and step is not None:
+            with self.summary_writer.as_default():
+                tf.summary.scalar("fid", value, step=step, description=f"Frechét Inception Distance using {num_images} images")
+
+        return value
+
+    def save_generator(self, save_js_too=False):
+        py_model_path = os.sep.join(["models", "py", "generator", self.architecture_name, self.model_name])
+        js_model_path = os.sep.join(["models", "js", self.architecture_name, self.model_name])
+
+        io_utils.delete_folder(py_model_path)
+        io_utils.ensure_folder_structure(py_model_path)
+
+        self.generator.save(py_model_path)
+
+        if save_js_too:
+            import tensorflowjs as tfjs
+            io_utils.delete_folder(js_model_path)
+            io_utils.ensure_folder_structure(js_model_path)
+            tfjs.converters.save_keras_model(self.generator, js_model_path)
+
+    def load_generator(self):
+        self.generator = tf.keras.models.load_model(
+            os.sep.join(["models", "py", "generator", self.architecture_name, self.model_name]))
+
+    def save_discriminator(self):
+        py_model_path = os.sep.join(["models", "py", "discriminator", self.architecture_name, self.model_name])
+
+        io_utils.delete_folder(py_model_path)
+        io_utils.ensure_folder_structure(py_model_path)
+
+        self.discriminator.save(py_model_path)
+
+    def load_discriminator(self):
+        self.discriminator = tf.keras.models.load_model(
+            os.sep.join(["models", "py", "discriminator", self.architecture_name, self.model_name]))
+
+    def generate_images_from_dataset(self, dataset_name="test", num_images=None, steps=None):
+        is_test = dataset_name == "test"
+
+        if num_images is None:
+            num_images = min(num_images, TEST_SIZE if is_test else TRAIN_SIZE)
+
+        dataset = self.test_ds if is_test else self.train_ds
+        dataset = list(dataset.unbatch().take(num_images).batch(1).as_numpy_iterator())
+
+        base_image_path = os.sep.join([TEMP_FOLDER, "generated-images", self.architecture_name, self.model_name])
+
+        io_utils.delete_folder(base_image_path)
+        io_utils.ensure_folder_structure(base_image_path)
+
+        for i, images in enumerate(dataset):
+            image_path = os.sep.join([base_image_path, f"{i}.png"])
+            fig = self.generate_comparison([images], image_path, steps)
+            plt.close(fig)
+
+        print(f"Generated {i + 1} images (using \"{dataset_name}\" dataset)")
+
+    @abstractmethod
+    def show_discriminated_image(self, batch_of_one):
+        pass
+
+    def show_discriminated_images(self, dataset_name="test", num_images=5):
+        is_test = dataset_name == "test"
+
+        if num_images == None:
+            num_images = min(num_images, TEST_SIZE if is_test else TRAIN_SIZE)
+
+        dataset = self.test_ds if is_test else self.train_ds
+        dataset = list(dataset.unbatch().take(num_images).batch(1).as_numpy_iterator())
+
+        for images in dataset:
+            self.show_discriminated_image(images)
+
+
+class WassersteinLoss(tf.keras.losses.Loss):
+    def call(self, y_true, y_pred):
+        # y_true will be in the range of [0,1] (actually, exactly either one)
+        # because of the use of BinaryCrossentropy...
+        # so, we change it to the range of [-1, 1]
+        y_true = y_true * 2 - 1.0
+        return tf.reduce_mean(y_pred * y_true)
