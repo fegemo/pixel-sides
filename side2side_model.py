@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 import tensorflow as tf
+from tensorboard.plugins.custom_scalar import layout_pb2
+from tensorboard.summary.v1 import custom_scalar_pb
 import time
 import datetime
 from IPython import display
@@ -48,6 +50,22 @@ class S2SModel(ABC):
         # but GAN's sigmoid(discriminator) outputs 1... so WGAN should invert: 1 - value
         # when showing the debug of the discriminator/critic output
         self.invert_discriminator_value = False
+        self.layout_summary = custom_scalar_pb(
+            layout_pb2.Layout(category=[
+                layout_pb2.Category(
+                    title="Fréchet Inception Distance",
+                    chart=[
+                        layout_pb2.Chart(
+                            title="FID for train and test",
+                            multiline=layout_pb2.MultilineChartContent(
+                                # regex to select only summaries which
+                                # are in "scalar_summaries" name scope:
+                                tag=[r'^fid\/']
+                            )
+                        )
+                    ])
+            ])
+        )
 
     def predict(self, images, **kwargs):
         pass
@@ -57,7 +75,9 @@ class S2SModel(ABC):
             self.log_folders = [TEMP_FOLDER, "logs", self.architecture_name, self.model_name]
             self.now_string = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
             self.summary_writer = tf.summary.create_file_writer(os.sep.join([*self.log_folders, self.now_string]))
-
+            with self.summary_writer.as_default():
+                tf.summary.experimental.write_raw_pb(
+                    self.layout_summary.SerializeToString(), step=0)
         try:
             self.do_fit(steps, update_steps, callbacks, starting_step)
         finally:
@@ -95,10 +115,10 @@ class S2SModel(ABC):
 
                 if "fid" in callbacks:
                     print(
-                        f"Calculating Fréchet Inception Distance at {(step + 1) / 1000}k with {TEST_SIZE} test examples...",
+                        f"Calculating Fréchet Inception Distance at {(step + 1) / 1000}k with {TEST_SIZE} examples...",
                         end="", flush=True)
-                    fid = self.report_fid(step=(step + 1) // update_steps)
-                    print(f" FID: {fid:.5f}")
+                    train_fid, test_fid = self.report_fid(step=(step + 1) // update_steps)
+                    print(f" FID: {train_fid:.3f} / {test_fid:.3f} (train/test)")
                 if "show_patches" in callbacks:
                     print(f"Showing discriminator patches")
                     self.show_discriminated_images()
@@ -137,18 +157,26 @@ class S2SModel(ABC):
         pass
 
     @abstractmethod
-    def select_real_and_fake_images_for_fid(self, num_images):
+    def select_real_and_fake_images_for_fid(self, num_images, dataset):
         pass
 
     def report_fid(self, num_images=TEST_SIZE, step=None):
-        real_images, fake_images = self.select_real_and_fake_images_for_fid(num_images)
-        value = fid.compare(real_images, fake_images)
+        train_real_images, train_fake_images = self.select_real_and_fake_images_for_fid(num_images, self.train_ds)
+        test_real_images, test_fake_images = self.select_real_and_fake_images_for_fid(num_images, self.test_ds)
+        train_value = fid.compare(train_real_images, train_fake_images)
+        test_value = fid.compare(test_real_images, test_fake_images)
 
         if hasattr(self, "summary_writer") and step is not None:
             with self.summary_writer.as_default():
-                tf.summary.scalar("fid", value, step=step, description=f"Frechét Inception Distance using {num_images} images")
+                with tf.name_scope("fid"):
+                    tf.summary.scalar("train", train_value, step=step,
+                                      description=f"Frechét Inception Distance using {num_images} images "
+                                                  f"from the TRAIN dataset")
+                    tf.summary.scalar("test", test_value, step=step,
+                                      description=f"Frechét Inception Distance using {num_images} images "
+                                                  f"from the TEST dataset")
 
-        return value
+        return train_value, test_value
 
     def save_generator(self, save_js_too=False):
         py_model_path = os.sep.join(["models", "py", "generator", self.architecture_name, self.model_name])
@@ -185,7 +213,8 @@ class S2SModel(ABC):
         is_test = dataset_name == "test"
 
         if num_images is None:
-            num_images = min(num_images, TEST_SIZE if is_test else TRAIN_SIZE)
+            num_images = TEST_SIZE if is_test else TRAIN_SIZE
+        num_images = min(num_images, TEST_SIZE if is_test else TRAIN_SIZE)
 
         dataset = self.test_ds if is_test else self.train_ds
         dataset = list(dataset.unbatch().take(num_images).batch(1).as_numpy_iterator())

@@ -20,7 +20,7 @@ TEST_SIZES = [DATASET_SIZES[i] - TRAIN_SIZES[i] for i, n in enumerate(DATASET_SI
 TEST_SIZE = sum(TEST_SIZES)
 
 BUFFER_SIZE = DATASET_SIZE
-BATCH_SIZE = 16
+BATCH_SIZE = 4
 
 IMG_SIZE = 64
 INPUT_CHANNELS = 4
@@ -29,4 +29,9 @@ OUTPUT_CHANNELS = 4
 # for stargan-based
 NUMBER_OF_DOMAINS = len(DIRECTION_FOLDERS)
 
+# for indexed colors
+MAX_PALETTE_SIZE = 256
+INVALID_INDEX_COLOR = [255, 0, 220, 255]    # some pink
+
 TEMP_FOLDER = "temp-side2side"
+

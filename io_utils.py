@@ -1,12 +1,10 @@
-import os
 import shutil
 import io
-import numpy as np
 import tensorflow as tf
 from matplotlib import pyplot as plt
-from IPython.display import display
 
 from configuration import *
+
 
 def ensure_folder_structure(*folders):
     provided_paths = []
@@ -72,13 +70,125 @@ def concat_image_and_domain_label(image, onehot_label):
 #     random_target = images_and_labels[random_target_index]
 #     return random_source, random_target
 
+# @tf.function
+def extract_palette(image, channels=OUTPUT_CHANNELS, fill_until_size=256):
+    """
+    Extracts the unique colors from an image (3D tensor)
+    Parameters
+    ----------
+    image a 3D tensor with shape (height, width, channels)
+    channels the number of channels of the image
+
+    Returns a tensor of colors (RGB) sorted by the number of times each one appears and from dark to light as a
+    second sorting key.
+    -------
+    """
+    # incoming image shape: (IMG_SIZE, IMG_SIZE, channels)
+    # reshaping to: (IMG_SIZE*IMG_SIZE, channels)
+    image = tf.cast(image, "int32")
+    # image = image[::-1, ::-1]  # sorting by appearance: bottom-right to top-left
+    image = tf.reshape(image, [-1, channels])
+    colors, _, count = tf.raw_ops.UniqueWithCountsV2(x=image, axis=[0])
+
+    # colors = tf.reverse(colors, [0])  # sorting by appearance: last appeared color comes first
+    # colors = tf.random.shuffle(colors)  # shuffled colors
+    # sorts the colors by the amount of times it appeared
+    # indices_sorted_by_count = tf.argsort(count, direction="DESCENDING", stable=True)
+    # colors = tf.gather(colors, indices_sorted_by_count)
+
+    # sorts them again (stably) putting the darker tones first
+    # here, lightness is given by (max(r,g,b) + min(r,g,b)) / 2.0 (as in the RGB to HSL conversion)
+    lightness = ((tf.reduce_max(colors, axis=-1) + tf.reduce_min(colors, axis=-1)) / 2)
+    indices_sorted_by_lightness = tf.argsort(lightness, direction="ASCENDING", stable=True)
+    colors = tf.gather(colors, indices_sorted_by_lightness)
+
+    # fills the palette to have 256 colors, so batches can be created (otherwise they can't, tf complains)
+    # TODO do something when the palette exceeds MAX_PALETTE_SIZE
+    num_colors = tf.shape(colors)[0]
+    if fill_until_size is not None:
+        fillers = tf.repeat([INVALID_INDEX_COLOR], [MAX_PALETTE_SIZE - num_colors], axis=0)
+        colors = tf.concat([colors, fillers], axis=0)
+
+    return colors
+
+
+@tf.function
+def rgba_to_single_int(values_in_rgba):
+    shape = tf.shape(values_in_rgba)
+    converted = tf.zeros(shape=shape[:-1], dtype="int32")
+    # multiplier: 2 ** [24, or 16, or 8, or 0]
+    for i, multiplier in enumerate([16777216, 65536, 256, 0]):
+        converted += values_in_rgba[..., i] * multiplier
+    return converted
+
+
+# @tf.function
+def rgba_to_indexed(image, palette):
+    original_shape = tf.shape(image)
+    flattened_image = tf.reshape(image, [-1, original_shape[-1]])
+    num_pixels, num_components = tf.shape(flattened_image)[0], tf.shape(flattened_image)[1]
+
+    indices = flattened_image == palette[:, None]
+    row_sums = tf.reduce_sum(tf.cast(indices, "int32"), axis=2)
+    results = tf.cast(tf.where(row_sums == num_components), "int32")
+
+    color_indices, pixel_indices = results[:, 0], results[:, 1]
+    pixel_indices = tf.expand_dims(pixel_indices, -1)
+
+    indexed = tf.scatter_nd(pixel_indices, color_indices, [num_pixels])
+    indexed = tf.reshape(indexed, [original_shape[0], original_shape[1], 1])
+    return indexed
+
+
+# def rgba_to_indexed(image_tensor, palette_tensor):
+#     def convert(image, palette):
+#         result = np.ndarray(shape=[image.shape[0], image.shape[1]])
+#
+#         for i, row in enumerate(image):
+#             for j, color in enumerate(row):
+#                 index, = np.where(np.all(palette == color, axis=1))
+#                 result[i, j] = index
+#         return result
+#     # return tf.py_function(func=convert, inp=[image_tensor, palette_tensor], Tout="int32")
+#     return convert(image_tensor, palette_tensor)
+# def rgba_to_indexed(image, palette):
+#     # convert image and palette from RGBA into a single integer for each color
+#     image_as_int = tf.map_fn(rgba_to_single_int, image)
+#     palette_as_int = tf.map_fn(rgba_to_single_int, palette)
+#
+#     # creates a hash table for looking up the indices in the palette
+#     palette_size = tf.shape(palette)[0]
+#     initializer = tf.lookup.KeyValueTensorInitializer(palette_as_int, tf.range(palette_size))
+#     palette_table = tf.lookup.StaticHashTable(
+#         initializer,
+#         default_value=-42,
+#         experimental_is_anonymous=True)
+#
+#     # looks up the color indices of the image (as_int) in the palette hash table
+#     indexed_image = palette_table.lookup(image_as_int)
+#     indexed_image = tf.expand_dims(indexed_image, -1)
+#     return indexed_image
+
+
+@tf.function
+def indexed_to_rgba(indexed_image, palette):
+    image_shape = tf.shape(indexed_image)
+    # tf.print("image_shape", image_shape)
+    # tf.print("tf.shape(palette)", tf.shape(palette))
+    image_rgb = tf.gather(palette, indexed_image)
+
+    # now the shape is (HEIGHT, WIDTH, 1, CHANNELS), so we need to reshape
+    # tf.print("tf.shape(image_rgb) inside indexed_to_rgb", tf.shape(image_rgb))
+    image_rgb = tf.reshape(image_rgb, [image_shape[0], image_shape[1], -1])
+    # tf.print("tf.shape(image_rgb) inside indexed_to_rgb (after reshape)", tf.shape(image_rgb))
+    return image_rgb
 
 def plot_to_image(matplotlib_figure, channels=OUTPUT_CHANNELS):
     """Converts the matplotlib plot specified by 'figure' to a PNG image and
     returns it. The supplied figure is closed and inaccessible after this call."""
     # Save the plot to a PNG in memory.
     buffer = io.BytesIO()
-    plt.savefig(buffer, format='png')
+    plt.savefig(buffer, format="png")
     # Closing the figure prevents it from being displayed directly inside
     # the notebook.
     plt.close(matplotlib_figure)

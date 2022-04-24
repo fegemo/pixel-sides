@@ -35,6 +35,8 @@ class StarGANModel(S2SModel):
     def create_generator(self, generator_type):
         if generator_type == "stargan":
             return StarGANGenerator()
+        elif generator_type == "unet":
+            return StarGANUnetGenerator()
         else:
             raise ValueError(f"The provided {generator_type} type for generator has not been implemented.")
 
@@ -62,15 +64,20 @@ class StarGANModel(S2SModel):
         total_loss = fake_loss + real_loss + real_domain_loss + gp_regularization
         return total_loss, real_loss, fake_loss, real_domain_loss, gp_regularization
 
-    def select_examples(self, number_of_examples=5):
-        random_domain_selector = lambda image, label: (image, label, io_utils.random_domain_label(1))
-        return list(
-            self.test_ds.unbatch().take(number_of_examples).batch(1).map(random_domain_selector).as_numpy_iterator())
+    def select_examples(self, num_examples=6):
+        num_train_examples = num_examples // 2
+        num_test_examples = num_examples - num_train_examples
 
-    def select_real_and_fake_images_for_fid(self, num_images):
+        random_domain_selector = lambda image, label: (image, label, io_utils.random_domain_label(1))
+        test_examples = self.test_ds.unbatch().take(num_test_examples).batch(1).map(random_domain_selector)
+        train_examples = self.train_ds.unbatch().take(num_train_examples).batch(1).map(random_domain_selector)
+
+        return list(test_examples.as_numpy_iterator()) + list(train_examples.as_numpy_iterator())
+
+    def select_real_and_fake_images_for_fid(self, num_images, dataset):
         real_images = np.ndarray((num_images, IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS))
         fake_images = np.ndarray((num_images, IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS))
-        real_dataset = self.test_ds.unbatch().take(num_images).batch(1)
+        real_dataset = dataset.unbatch().take(num_images).batch(1)
 
         for i, (real_image, label) in real_dataset.enumerate():
             random_domain = io_utils.random_domain_label(1)
@@ -271,7 +278,7 @@ class StarGANModel(S2SModel):
 
 class PairedStarGANModel(StarGANModel):
     def __init__(self, train_ds, test_ds, model_name, architecture_name, discriminator_type="twopairedstargan",
-                 generator_type="stargan", lambda_gp=10., lambda_domain=1., lambda_reconstruction=10., lambda_l1=10.,
+                 generator_type="stargan", lambda_gp=10., lambda_domain=1., lambda_reconstruction=10., lambda_l1=100.,
                  discriminator_steps=5):
         super().__init__(train_ds, test_ds, model_name, architecture_name, discriminator_type, generator_type,
                          lambda_gp, lambda_domain, lambda_reconstruction, discriminator_steps)
@@ -303,13 +310,19 @@ class PairedStarGANModel(StarGANModel):
         total_loss = fake_loss + real_loss + real_domain_loss + gp_regularization
         return total_loss, real_loss, fake_loss, real_domain_loss, gp_regularization
 
-    def select_examples(self, number_of_examples=5):
-        return list(self.test_ds.unbatch().take(number_of_examples).batch(1).as_numpy_iterator())
+    def select_examples(self, num_examples=6):
+        num_train_examples = num_examples // 2
+        num_test_examples = num_examples - num_train_examples
 
-    def select_real_and_fake_images_for_fid(self, num_images):
+        test_examples = self.test_ds.unbatch().take(num_test_examples).batch(1)
+        train_examples = self.train_ds.unbatch().take(num_train_examples).batch(1)
+
+        return list(test_examples.as_numpy_iterator()) + list(train_examples.as_numpy_iterator())
+
+    def select_real_and_fake_images_for_fid(self, num_images, dataset):
         real_images = np.ndarray((num_images, IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS))
         fake_images = np.ndarray((num_images, IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS))
-        real_dataset = self.test_ds.unbatch().take(num_images).batch(1)
+        real_dataset = dataset.unbatch().take(num_images).batch(1)
 
         for i, (source, target) in real_dataset.enumerate():
             source_image, _ = source
@@ -384,11 +397,11 @@ class PairedStarGANModel(StarGANModel):
         if step % self.discriminator_steps == 0:
             with tf.GradientTape() as gen_tape:
                 image_and_label_forward = io_utils.concat_image_and_domain_label(source_image, target_domain)
-                fake_image = self.generator(image_and_label, training=True)
+                fake_image = self.generator(image_and_label_forward, training=True)
 
                 # reconstruct the image to the original domain
                 image_and_label_backward = io_utils.concat_image_and_domain_label(fake_image, source_domain)
-                reconstructed_image = self.generator(image_and_label, training=True)
+                reconstructed_image = self.generator(image_and_label_backward, training=True)
 
                 fake_predicted_patches, fake_predicted_domain = self.discriminator([source_image, fake_image],
                                                                                    training=True)
@@ -425,11 +438,11 @@ class PairedStarGANModel(StarGANModel):
             target_domain_side_index = tf.argmax(target_domain[0], axis=0)
             target_domain_name = DIRECTION_FOLDERS[target_domain_side_index]
 
-            image_and_label = io_utils.concat_image_and_domain_label(source_image, target_domain)
-            generated_image = self.generator(image_and_label, training=True)
+            image_and_label_forward = io_utils.concat_image_and_domain_label(source_image, target_domain)
+            generated_image = self.generator(image_and_label_forward, training=True)
 
-            image_and_label = io_utils.concat_image_and_domain_label(generated_image, source_domain)
-            reconstructed_image = self.generator(image_and_label, training=True)
+            image_and_label_backward = io_utils.concat_image_and_domain_label(generated_image, source_domain)
+            reconstructed_image = self.generator(image_and_label_backward, training=True)
 
             images = [source_image, reconstructed_image, generated_image, target_image]
             for j in range(num_columns):
@@ -457,7 +470,7 @@ class PairedStarGANModel(StarGANModel):
 
     def get_predicted_real_and_fake(self, batch_of_one):
         source, target = batch_of_one
-        source_image, _ = source
+        source_image, source_domain = source
         target_image, target_domain = target
         image_and_label = io_utils.concat_image_and_domain_label(source_image, target_domain)
         fake_image = self.generator(image_and_label, training=True)

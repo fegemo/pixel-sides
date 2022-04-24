@@ -122,6 +122,55 @@ def Deeper2x2PatchDiscriminator(**kwargs):
     return tf.keras.Model(inputs=[input_image, target_image], outputs=last)
 
 
+def IndexedPatchDiscriminator(num_patches, **kwargs):
+    initializer = tf.random_normal_initializer(0., 0.02)
+
+    input_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, 1], name="input_image")
+    target_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, 1], name="target_image")
+
+    x = layers.concatenate([input_image, target_image])  # (batch_size, 64, 64, 2)
+
+    if num_patches > 30:
+        raise ValueError(f"num_patches for the discriminator should not exceed 30, but {num_patches} was given")
+
+    down = unet_downsample(64, 4, False)(x)  # (batch_size, 32, 32, 64)
+    current_patches = 30
+    next_layer_filters = 64 * 2
+    while current_patches > max(num_patches, 2):
+        # print(f"Created downsample with {next_layer_filters}")
+        down = unet_downsample(next_layer_filters, 4)(down)
+        current_patches = ((current_patches + 2) / 2) - 2
+        next_layer_filters *= 2
+        # print(f"current_patches now {current_patches}")
+    zero_pad2 = layers.ZeroPadding2D()(down)  # (batch_size, 34, 34, 64)
+    last_filter_size = 5 if num_patches > 1 else 5
+    last = layers.Conv2D(1, last_filter_size, strides=1,
+                         kernel_initializer=initializer)(zero_pad2)  # (batch_size, 30, 30, 1)
+
+    return tf.keras.Model(inputs=[input_image, target_image], outputs=last, name="indexed-patch-disc")
+
+
+def IndexedPatchResnetDiscriminator():
+    init = tf.random_normal_initializer(0., 0.02)
+
+    input_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, 1], name="input_image")
+    target_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, 1], name="target_image")
+
+    inputs = layers.concatenate([input_image, target_image])
+    x = inputs
+
+    x = layers.Conv2D(64, 4, padding="same", kernel_initializer=init, use_bias=False)(x)
+    x = tfalayers.InstanceNormalization()(x)
+    x = layers.LeakyReLU()(x)
+
+    x = resblock(x, 64, 4, init)
+    x = resblock(x, 64, 4, init)
+    x = resblock(x, 64, 4, init)
+
+    last = layers.Conv2D(1, 4, padding="same", kernel_initializer=init)(x)
+
+    return tf.keras.Model(inputs=[input_image, target_image], outputs=last, name="indexed-patch-resnet-disc")
+
 
 def UnetDiscriminator(**kwargs):
     init = tf.random_normal_initializer(0., 0.02)
@@ -421,6 +470,57 @@ def UnetGenerator():
     return tf.keras.Model(inputs=inputs, outputs=x)
 
 
+def IndexedUnetGenerator():
+    init = tf.random_normal_initializer(0., 0.02)
+    inputs = layers.Input(shape=[IMG_SIZE, IMG_SIZE, 1], name="input_image") #(batch_size, 64, 64, 1)
+              # layers.Input(shape=[], name="palette_size")]
+
+    down_stack = [
+        unet_downsample( 64, 4, apply_batchnorm=False, init=init),  # (batch_size, 32, 32,   64)
+        unet_downsample(128, 4, init=init),                         # (batch_size, 16, 16,  128)
+        unet_downsample(256, 4, init=init),                         # (batch_size,  8,  8,  256)
+        unet_downsample(512, 4, init=init),                         # (batch_size,  4,  4,  512)
+        unet_downsample(512, 4, init=init),                         # (batch_size,  2,  2,  512)
+        unet_downsample(512, 4, init=init),                         # (batch_size,  1,  1,  512)
+    ]
+
+    up_stack = [
+        unet_upsample(512, 4, apply_dropout=True, init=init),       # (batch_size,  2,  2, 1024)
+        unet_upsample(512, 4, apply_dropout=True, init=init),       # (batch_size,  4,  4, 1024)
+        unet_upsample(256, 4, apply_dropout=True, init=init),       # (batch_size,  8,  8,  512)
+        unet_upsample(128, 4, init=init),                           # (batch_size, 16, 16,  256)
+        unet_upsample( 64, 4, init=init),                           # (batch_size, 32, 32,  128)
+        unet_upsample( 32, 4, init=init),                           # (batch_size, 64, 64,   64)
+    ]
+
+    last = layers.Conv2D(MAX_PALETTE_SIZE, 4,
+                                     strides=1,
+                                     padding="same",
+                                     kernel_initializer=init,
+                                     activation="softmax"
+                         )  # (batch_size, 64, 64, 4)
+
+    x = inputs
+
+    # downsampling e adicionando as skip-connections
+    skips = []
+    for down in down_stack:
+        x = down(x)
+        skips.append(x)
+
+    # ignora a última skip e inverte a ordem
+    skips = list(reversed(skips[:-1]))
+
+    # camadas de upsampling e skip connections
+    for up, skip in zip(up_stack, [*skips, inputs]):
+        x = up(x)
+        x = layers.Concatenate()([x, skip])
+
+    x = last(x)
+
+    return tf.keras.Model(inputs=inputs, outputs=x)
+
+
 def unet_conv_block(inputs, filters, kernel_size, initializer, apply_batchnorm=True, apply_dropout=False, activation="leaky", bias=False):
     x = inputs
     
@@ -565,7 +665,7 @@ def StarGANDiscriminator():
     
     # downsampling blocks (1 less than StarGAN b/c our input is star/2)
     filters = 64
-    downsampling_blocks = 5 # 128, 256, 512, 1024, 2048
+    downsampling_blocks = 5  # 128, 256, 512, 1024, 2048
     for i in range(downsampling_blocks):
         filters *= 2
         x = layers.Conv2D(filters, kernel_size=4, strides=2, padding="same", kernel_initializer=init, use_bias=False)(x)
@@ -681,4 +781,79 @@ def TwoPairedStarGANDiscriminator():
 
 #     return tf.keras.Model(inputs=input_image, outputs=activation, name="StarGANGenerator")
 
-    
+
+def unet_star_downsample(filters, size, initializer):
+    return tf.keras.Sequential([
+        layers.Conv2D(
+            filters,
+            size,
+            strides=2,
+            padding="same",
+            kernel_initializer=initializer,
+            use_bias=False),
+        tfalayers.InstanceNormalization(epsilon=0.00001),
+        layers.LeakyReLU()
+    ])
+
+def unet_star_upsample(filters, size, initializer):
+    return tf.keras.Sequential([
+        layers.Conv2DTranspose(filters, size, strides=2,
+                               padding="same",
+                               kernel_initializer=initializer,
+                               use_bias=False),
+        tfalayers.InstanceNormalization(epsilon=0.00001),
+        layers.ReLU()
+    ])
+
+    return result
+
+
+def StarGANUnetGenerator():
+    initializer = tf.random_normal_initializer(0., 0.02)
+    input_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS + NUMBER_OF_DOMAINS])
+
+    down_stack = [
+        unet_star_downsample(  64, 4, initializer),  # (batch_size, 32, 32,   64)
+        unet_star_downsample( 128, 4, initializer),                         # (batch_size, 16, 16,  128)
+        unet_star_downsample( 256, 4, initializer),                         # (batch_size,  8,  8,  256)
+        unet_star_downsample( 512, 4, initializer),                         # (batch_size,  4,  4,  512)
+        unet_star_downsample(1024, 4, initializer),                         # (batch_size,  2,  2,  512)
+        unet_star_downsample(1024, 4, initializer),                         # (batch_size,  1,  1,  512)
+    ]
+
+    up_stack = [
+        unet_star_upsample(1024, 4, initializer),       # (batch_size,  2,  2, 1024)
+        unet_star_upsample( 512, 4, initializer),       # (batch_size,  4,  4, 1024)
+        unet_star_upsample( 256, 4, initializer),       # (batch_size,  8,  8,  512)
+        unet_star_upsample( 128, 4, initializer),                           # (batch_size, 16, 16,  256)
+        unet_star_upsample(  64, 4, initializer),                           # (batch_size, 32, 32,  128)
+        unet_star_upsample(  32, 4, initializer),                           # (batch_size, 64, 64,   64)
+    ]
+
+    last = layers.Conv2D(OUTPUT_CHANNELS, 4,
+                                     strides=1,
+                                     padding="same",
+                                     kernel_initializer=initializer,
+                                     activation="tanh")  # (batch_size, 64, 64, 4)
+
+    x = input_image
+
+    # downsampling e adicionando as skip-connections
+    skips = []
+    for down in down_stack:
+        x = down(x)
+        skips.append(x)
+        # x = resblock(x, 64, 4, initializer)
+
+    # ignora a última skip e inverte a ordem
+    skips = list(reversed(skips[:-1]))
+
+    # camadas de upsampling e skip connections
+    for up, skip in zip(up_stack, [*skips, input_image]):
+        # x = resblock(x, 64, 4, initializer)
+        x = up(x)
+        x = layers.Concatenate()([x, skip])
+
+    x = last(x)
+
+    return tf.keras.Model(inputs=input_image, outputs=x, name="StarGANUnetGenerator")
