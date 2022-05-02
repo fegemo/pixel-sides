@@ -3,6 +3,7 @@ from IPython import display
 from matplotlib import pyplot as plt
 from abc import abstractmethod
 
+import histogram
 import io_utils
 from networks import *
 from side2side_model import S2SModel, WassersteinLoss
@@ -10,8 +11,8 @@ from side2side_model import S2SModel, WassersteinLoss
 
 class Pix2PixModel(S2SModel):
     def __init__(self, train_ds, test_ds, model_name, architecture_name,
-                 discriminator_type, generator_type, mode="gan",
-                 discriminator_steps=1, lambda_l1=100., lambda_gp=10., **kwargs):
+                 discriminator_type, generator_type, mode,
+                 discriminator_steps, lambda_l1, lambda_gp, lambda_histogram, **kwargs):
         super().__init__(train_ds, test_ds, model_name, architecture_name)
 
         default_kwargs = {"num_patches": 30}
@@ -20,6 +21,8 @@ class Pix2PixModel(S2SModel):
         self.mode = mode
         self.lambda_l1 = lambda_l1
         self.lambda_gp = lambda_gp
+        self.lambda_histogram = lambda_histogram
+        print("lambda_histogram", self.lambda_histogram)
         self.discriminator_steps = discriminator_steps
 
         self.generator = self.create_generator(generator_type)
@@ -39,26 +42,25 @@ class Pix2PixModel(S2SModel):
     @staticmethod
     def build(train_ds, test_ds, model_name, architecture_name,
               discriminator_type, generator_type, mode="gan", discriminator_steps=1,
-              lambda_l1=100., lambda_gp=10., **kwargs):
+              lambda_l1=100., lambda_gp=10., lambda_histogram=1., **kwargs):
+        constructor = None
         if discriminator_steps > 1:
-            return Pix2PixModelMultipleSteps(
-                train_ds, test_ds,
-                model_name, architecture_name,
-                discriminator_type, generator_type,
-                mode, discriminator_steps,
-                lambda_l1, lambda_gp,
-                **kwargs)
+            constructor = Pix2PixModelMultipleSteps
         elif discriminator_steps == 1:
-            return Pix2PixModelSingleStep(
-                train_ds, test_ds,
-                model_name, architecture_name,
-                discriminator_type, generator_type,
-                mode, discriminator_steps,
-                lambda_l1, lambda_gp,
-                **kwargs)
+            if mode == "gan":
+                constructor = Pix2PixModelSingleStepWithoutGP
+            else:
+                constructor = Pix2PixModelSingleStep
         else:
             raise ValueError(
                 f"Tried to build a Pix2PixModel, but the user provided {discriminator_steps} discriminator steps")
+        return constructor(
+            train_ds, test_ds,
+            model_name, architecture_name,
+            discriminator_type, generator_type,
+            mode, discriminator_steps,
+            lambda_l1, lambda_gp, lambda_histogram,
+            **kwargs)
 
     @abstractmethod
     def train_step(self, batch, step, update_steps):
@@ -77,6 +79,8 @@ class Pix2PixModel(S2SModel):
                     f"The 'num_patches' kw argument should have been passed to create_discriminator,"
                     f"but it was not. kwargs: {kwargs}")
             return PatchDiscriminator(kwargs["num_patches"])
+        elif discriminator_type == "patch-resnet":
+            return PatchResnetDiscriminator()
         elif discriminator_type == "deeper":
             return Deeper2x2PatchDiscriminator()
         elif discriminator_type == "u-net" or discriminator_type == "unet":
@@ -109,17 +113,20 @@ class Pix2PixModel(S2SModel):
     def generator_loss(self, fake_predicted, fake_image, real_image):
         adversarial_loss = self.loss_object(tf.ones_like(fake_predicted), fake_predicted)
         l1_loss = tf.reduce_mean(tf.abs(real_image - fake_image))
-        total_loss = adversarial_loss + (self.lambda_l1 * l1_loss)
+        real_histogram = histogram.calculate_rgbuv_histogram(real_image)
+        fake_histogram = histogram.calculate_rgbuv_histogram(fake_image)
+        histogram_loss = histogram.hellinger_loss(real_histogram, fake_histogram)
+        # histogram_loss = tf.constant(0., "float32")
+        total_loss = adversarial_loss + (self.lambda_l1 * l1_loss) + (self.lambda_histogram * histogram_loss)
 
-        return total_loss, adversarial_loss, l1_loss
+        return total_loss, adversarial_loss, l1_loss, histogram_loss
 
     def discriminator_loss(self, real_predicted, fake_predicted, gradient_penalty=tf.constant(0.)):
         real_loss = self.loss_object(tf.ones_like(real_predicted), real_predicted)
         fake_loss = self.loss_object(tf.zeros_like(fake_predicted), fake_predicted)
-        gp_loss = self.lambda_gp * gradient_penalty
-        total_loss = real_loss + fake_loss + gp_loss
+        total_loss = real_loss + fake_loss + self.lambda_gp * gradient_penalty
 
-        return total_loss, real_loss, fake_loss, gp_loss
+        return total_loss, real_loss, fake_loss, gradient_penalty
 
     @tf.function
     def calculate_gradient_penalty(self, input_image, real_image, fake_image):
@@ -245,7 +252,7 @@ class Pix2PixModel(S2SModel):
         fake_image = fake_image[0]
 
         # display the images: real / discr. real / fake / discr. fake
-        figure = plt.figure(figsize=(6 * 4, 6 * 1))
+        plt.figure(figsize=(6 * 4, 6 * 1))
         plt.subplot(1, 4, 1)
         plt.title("Label", fontdict={"fontsize": 20})
         plt.imshow(real_image * 0.5 + 0.5)
@@ -269,15 +276,16 @@ class Pix2PixModel(S2SModel):
         plt.show()
 
 
+# Training loop with support for discriminator_steps > 1 and gradient penalties
 class Pix2PixModelMultipleSteps(Pix2PixModel):
     def __init__(self, train_ds, test_ds, model_name, architecture_name,
-                 discriminator_type, generator_type, mode="gan",
-                 discriminator_steps=1, lambda_l1=100., lambda_gp=10., **kwargs):
+                 discriminator_type, generator_type, mode,
+                 discriminator_steps, lambda_l1, lambda_gp, lambda_histogram, **kwargs):
         super().__init__(train_ds, test_ds, model_name, architecture_name,
                          discriminator_type, generator_type, mode,
-                         discriminator_steps, lambda_l1, lambda_gp, **kwargs)
+                         discriminator_steps, lambda_l1, lambda_gp, lambda_histogram, **kwargs)
 
-    @tf.function(experimental_relax_shapes=True)
+    @tf.function
     def train_step(self, batch, step, update_steps):
         input_image, real_image = batch
 
@@ -306,7 +314,7 @@ class Pix2PixModelMultipleSteps(Pix2PixModel):
             # Training the GENERATOR
             if step % self.discriminator_steps == 0:
                 g_loss = self.generator_loss(fake_predicted, fake_image, real_image)
-                generator_loss, generator_adversarial_loss, generator_l1_loss = g_loss
+                generator_loss, generator_adversarial_loss, generator_l1_loss, generator_histogram_loss = g_loss
 
                 with tape.stop_recording():
                     generator_gradients = tape.gradient(generator_loss, self.generator.trainable_variables)
@@ -317,16 +325,17 @@ class Pix2PixModelMultipleSteps(Pix2PixModel):
                             tf.summary.scalar("total_loss", generator_loss, step=step // update_steps)
                             tf.summary.scalar("adversarial_loss", generator_adversarial_loss, step=step // update_steps)
                             tf.summary.scalar("l1_loss", generator_l1_loss, step=step // update_steps)
+                            tf.summary.scalar("histogram_loss", generator_histogram_loss, step=step // update_steps)
 
 
-# Loop de treinamento tradicional, do tutorial Tensorflow, sem WGAN
+# Training loop when discriminator_steps == 1 (can calculate gradient penalty)
 class Pix2PixModelSingleStep(Pix2PixModel):
     def __init__(self, train_ds, test_ds, model_name, architecture_name,
-                 discriminator_type, generator_type, mode="gan",
-                 discriminator_steps=1, lambda_l1=100., lambda_gp=10., **kwargs):
+                 discriminator_type, generator_type, mode,
+                 discriminator_steps, lambda_l1, lambda_gp, lambda_histogram, **kwargs):
         super().__init__(train_ds, test_ds, model_name, architecture_name,
                          discriminator_type, generator_type, mode,
-                         discriminator_steps, lambda_l1, lambda_gp, **kwargs)
+                         discriminator_steps, lambda_l1, lambda_gp, lambda_histogram, **kwargs)
 
     @tf.function
     def train_step(self, batch, step, update_steps):
@@ -338,10 +347,57 @@ class Pix2PixModelSingleStep(Pix2PixModel):
             real_predicted = self.discriminator([input_image, real_image], training=True)
             fake_predicted = self.discriminator([input_image, fake_image], training=True)
 
-            generator_loss, generator_adversarial_loss, generator_l1_loss = self.generator_loss(fake_predicted,
-                                                                                                fake_image, real_image)
-            discriminator_loss, discriminator_real_loss, discriminator_fake_loss, _ = self.discriminator_loss(
-                real_predicted, fake_predicted)
+            g_loss = self.generator_loss(fake_predicted, fake_image, real_image)
+            generator_loss, generator_adversarial_loss, generator_l1_loss, generator_histogram_loss = g_loss
+
+            gradient_penalty = self.calculate_gradient_penalty(input_image, real_image, fake_image)
+            d_loss = self.discriminator_loss(real_predicted, fake_predicted, gradient_penalty)
+            discriminator_loss, discriminator_real_loss, discriminator_fake_loss, discriminator_gp_loss = d_loss
+
+        generator_gradients = tape.gradient(generator_loss, self.generator.trainable_variables)
+        discriminator_gradients = tape.gradient(discriminator_loss, self.discriminator.trainable_variables)
+
+        self.generator_optimizer.apply_gradients(zip(generator_gradients, self.generator.trainable_variables))
+        self.discriminator_optimizer.apply_gradients(
+            zip(discriminator_gradients, self.discriminator.trainable_variables))
+
+        with self.summary_writer.as_default():
+            with tf.name_scope("discriminator"):
+                tf.summary.scalar("total_loss", discriminator_loss, step=step // update_steps)
+                tf.summary.scalar("real_loss", discriminator_real_loss, step=step // update_steps)
+                tf.summary.scalar("fake_loss", discriminator_fake_loss, step=step // update_steps)
+                tf.summary.scalar("gp_loss", discriminator_gp_loss, step=step // update_steps)
+            with tf.name_scope("generator"):
+                tf.summary.scalar("total_loss", generator_loss, step=step // update_steps)
+                tf.summary.scalar("adversarial_loss", generator_adversarial_loss, step=step // update_steps)
+                tf.summary.scalar("l1_loss", generator_l1_loss, step=step // update_steps)
+                tf.summary.scalar("histogram_loss", generator_histogram_loss, step=step // update_steps)
+
+
+# Traditional training loop, without WGAN concepts (cost and gradient penalty)
+class Pix2PixModelSingleStepWithoutGP(Pix2PixModel):
+    def __init__(self, train_ds, test_ds, model_name, architecture_name,
+                 discriminator_type, generator_type, mode,
+                 discriminator_steps, lambda_l1, lambda_gp, lambda_histogram, **kwargs):
+        super().__init__(train_ds, test_ds, model_name, architecture_name,
+                         discriminator_type, generator_type, mode,
+                         discriminator_steps, lambda_l1, lambda_gp, lambda_histogram, **kwargs)
+
+    @tf.function
+    def train_step(self, batch, step, update_steps):
+        input_image, real_image = batch
+
+        with tf.GradientTape(persistent=True) as tape:
+            fake_image = self.generator(input_image, training=True)
+
+            real_predicted = self.discriminator([input_image, real_image], training=True)
+            fake_predicted = self.discriminator([input_image, fake_image], training=True)
+
+            g_loss = self.generator_loss(fake_predicted, fake_image, real_image)
+            generator_loss, generator_adversarial_loss, generator_l1_loss, generator_histogram_loss = g_loss
+
+            d_loss = self.discriminator_loss(real_predicted, fake_predicted)
+            discriminator_loss, discriminator_real_loss, discriminator_fake_loss, _ = d_loss
 
         generator_gradients = tape.gradient(generator_loss, self.generator.trainable_variables)
         discriminator_gradients = tape.gradient(discriminator_loss, self.discriminator.trainable_variables)
@@ -359,6 +415,7 @@ class Pix2PixModelSingleStep(Pix2PixModel):
                 tf.summary.scalar("total_loss", generator_loss, step=step // update_steps)
                 tf.summary.scalar("adversarial_loss", generator_adversarial_loss, step=step // update_steps)
                 tf.summary.scalar("l1_loss", generator_l1_loss, step=step // update_steps)
+                tf.summary.scalar("histogram_loss", generator_histogram_loss, step=step // update_steps)
 
 
 class Pix2PixIndexedModel(Pix2PixModel):

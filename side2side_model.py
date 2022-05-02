@@ -121,7 +121,8 @@ class S2SModel(ABC):
                     print(f" FID: {train_fid:.3f} / {test_fid:.3f} (train/test)")
                 if "show_patches" in callbacks:
                     print(f"Showing discriminator patches")
-                    self.show_discriminated_images()
+                    self.show_discriminated_images("test")
+                    self.show_discriminated_images("train")
 
                 print(f"Step: {(step + 1) / 1000}k")
                 if step - starting_step < steps - 1:
@@ -235,10 +236,10 @@ class S2SModel(ABC):
     def show_discriminated_image(self, batch_of_one):
         pass
 
-    def show_discriminated_images(self, dataset_name="test", num_images=5):
+    def show_discriminated_images(self, dataset_name="test", num_images=2):
         is_test = dataset_name == "test"
 
-        if num_images == None:
+        if num_images is None:
             num_images = min(num_images, TEST_SIZE if is_test else TRAIN_SIZE)
 
         dataset = self.test_ds if is_test else self.train_ds
@@ -251,7 +252,12 @@ class S2SModel(ABC):
 class WassersteinLoss(tf.keras.losses.Loss):
     def call(self, y_true, y_pred):
         # y_true will be in the range of [0,1] (actually, exactly either one)
-        # because of the use of BinaryCrossentropy...
+        # because of the use of BinaryCrossentropy for the vanilla GAN...
         # so, we change it to the range of [-1, 1]
         y_true = y_true * 2 - 1.0
+
+        # we also multiply y_true by -1 because we want REAL images negative and FAKE positive, so the
+        # generator in a WGAN has positive adversarial loss
+        y_true *= -1
+
         return tf.reduce_mean(y_pred * y_true)

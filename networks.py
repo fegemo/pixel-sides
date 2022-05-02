@@ -122,6 +122,37 @@ def Deeper2x2PatchDiscriminator(**kwargs):
     return tf.keras.Model(inputs=[input_image, target_image], outputs=last)
 
 
+def PatchResnetDiscriminator():
+    init = tf.random_normal_initializer(0., 0.02)
+
+    input_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="input_image")
+    target_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="target_image")
+
+    inputs = layers.concatenate([input_image, target_image])
+    x = inputs
+
+    x = layers.Conv2D(64, 4, padding="same", kernel_initializer=init, use_bias=False)(x)
+    x = tfalayers.InstanceNormalization()(x)
+    x = layers.LeakyReLU()(x)
+
+    x = resblock(x, 64, 4, init)
+    x = layers.Dropout(0.5)(x)
+    x = resblock(x, 64, 4, init)
+    x = layers.Dropout(0.5)(x)
+    x = resblock(x, 64, 4, init)
+    x = layers.Dropout(0.5)(x)
+    x = resblock(x, 64, 4, init)
+    x = layers.Dropout(0.5)(x)
+    x = resblock(x, 64, 4, init)
+    x = layers.Dropout(0.5)(x)
+    x = resblock(x, 64, 4, init)
+    x = layers.Dropout(0.5)(x)
+
+    last = layers.Conv2D(1, 4, padding="same", kernel_initializer=init)(x)
+
+    return tf.keras.Model(inputs=[input_image, target_image], outputs=last, name="patch-resnet-disc")
+
+
 def IndexedPatchDiscriminator(num_patches, **kwargs):
     initializer = tf.random_normal_initializer(0., 0.02)
 
@@ -164,8 +195,11 @@ def IndexedPatchResnetDiscriminator():
     x = layers.LeakyReLU()(x)
 
     x = resblock(x, 64, 4, init)
-    x = resblock(x, 64, 4, init)
-    x = resblock(x, 64, 4, init)
+    x = layers.Dropout(0.5)(x)
+    # x = resblock(x, 64, 4, init)
+    # x = layers.Dropout(0.5)(x)
+    # x = resblock(x, 64, 4, init)
+    # x = layers.Dropout(0.5)(x)
 
     last = layers.Conv2D(1, 4, padding="same", kernel_initializer=init)(x)
 
@@ -476,21 +510,21 @@ def IndexedUnetGenerator():
               # layers.Input(shape=[], name="palette_size")]
 
     down_stack = [
-        unet_downsample( 64, 4, apply_batchnorm=False, init=init),  # (batch_size, 32, 32,   64)
-        unet_downsample(128, 4, init=init),                         # (batch_size, 16, 16,  128)
-        unet_downsample(256, 4, init=init),                         # (batch_size,  8,  8,  256)
-        unet_downsample(512, 4, init=init),                         # (batch_size,  4,  4,  512)
-        unet_downsample(512, 4, init=init),                         # (batch_size,  2,  2,  512)
-        unet_downsample(512, 4, init=init),                         # (batch_size,  1,  1,  512)
+        unet_downsample( 16, 4, apply_batchnorm=False, init=init),  # (batch_size, 32, 32,   64)
+        unet_downsample( 32, 4, init=init),                         # (batch_size, 16, 16,  128)
+        unet_downsample( 64, 4, init=init),                         # (batch_size,  8,  8,  256)
+        unet_downsample(128, 4, init=init),                         # (batch_size,  4,  4,  512)
+        unet_downsample(128, 4, init=init),                         # (batch_size,  2,  2,  512)
+        unet_downsample(128, 4, init=init),                         # (batch_size,  1,  1,  512)
     ]
 
     up_stack = [
-        unet_upsample(512, 4, apply_dropout=True, init=init),       # (batch_size,  2,  2, 1024)
-        unet_upsample(512, 4, apply_dropout=True, init=init),       # (batch_size,  4,  4, 1024)
-        unet_upsample(256, 4, apply_dropout=True, init=init),       # (batch_size,  8,  8,  512)
-        unet_upsample(128, 4, init=init),                           # (batch_size, 16, 16,  256)
-        unet_upsample( 64, 4, init=init),                           # (batch_size, 32, 32,  128)
-        unet_upsample( 32, 4, init=init),                           # (batch_size, 64, 64,   64)
+        unet_upsample(128, 4, apply_dropout=True, init=init),       # (batch_size,  2,  2, 1024)
+        unet_upsample(128, 4, apply_dropout=True, init=init),       # (batch_size,  4,  4, 1024)
+        unet_upsample( 64, 4, apply_dropout=True, init=init),       # (batch_size,  8,  8,  512)
+        unet_upsample( 32, 4, init=init),       # (batch_size, 16, 16,  256)
+        unet_upsample( 16, 4, init=init),       # (batch_size, 32, 32,  128)
+        unet_upsample(  8, 4, init=init),       # (batch_size, 64, 64,   64)
     ]
 
     last = layers.Conv2D(MAX_PALETTE_SIZE, 4,
