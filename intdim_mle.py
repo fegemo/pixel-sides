@@ -45,13 +45,15 @@ def intrinsic_dim_sample_wise(X, k=5):
     intdim_sample = d
     return intdim_sample
 
+
 def intrinsic_dim_scale_interval(X, k1=10, k2=20):
-    X = pd.DataFrame(X).drop_duplicates().values # remove duplicates in case you use bootstrapping
+    # X = pd.DataFrame(X).drop_duplicates().values # remove duplicates in case you use bootstrapping
     intdim_k = []
     for k in range(k1, k2 + 1):
         m = intrinsic_dim_sample_wise(X, k).mean()
         intdim_k.append(m)
     return intdim_k
+
 
 def repeated(func, X, nb_iter=100, random_state=None, verbose=0, mode='bootstrap', **func_kw):
     if random_state is None:
@@ -66,7 +68,9 @@ def repeated(func, X, nb_iter=100, random_state=None, verbose=0, mode='bootstrap
         iters = tqdm(iters)    
     for i in iters:
         if mode == 'bootstrap':
-            Xr = X[rng.randint(0, nb_examples, size=nb_examples)]
+            ind = rng.randint(0, nb_examples, size=nb_examples)
+            ind = np.unique(ind)
+            Xr = X[ind]
         elif mode == 'shuffle':
             ind = np.arange(nb_examples)
             rng.shuffle(ind)
