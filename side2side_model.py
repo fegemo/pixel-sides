@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import tensorflow as tf
-from tensorboard.plugins.custom_scalar import layout_pb2
-from tensorboard.summary.v1 import custom_scalar_pb
+from tensorboard.plugins.custom_scalar import layout_pb2, summary as cs_summary
+# from tensorboard.summary.v1 import custom_scalar_pb
 import time
 import datetime
 from IPython import display
@@ -46,26 +46,7 @@ class S2SModel(ABC):
         self.architecture_name = architecture_name
         self.checkpoint_dir = os.sep.join(
             [TEMP_FOLDER, "training-checkpoints", self.architecture_name, self.model_name])
-        # WGAN's sigmoid(critic) outputs 0 when it is sure a patch is real
-        # but GAN's sigmoid(discriminator) outputs 1... so WGAN should invert: 1 - value
-        # when showing the debug of the discriminator/critic output
-        self.invert_discriminator_value = False
-        self.layout_summary = custom_scalar_pb(
-            layout_pb2.Layout(category=[
-                layout_pb2.Category(
-                    title="Fréchet Inception Distance",
-                    chart=[
-                        layout_pb2.Chart(
-                            title="FID for train and test",
-                            multiline=layout_pb2.MultilineChartContent(
-                                # regex to select only summaries which
-                                # are in "scalar_summaries" name scope:
-                                tag=[r'^fid\/']
-                            )
-                        )
-                    ])
-            ])
-        )
+        self.layout_summary = S2SModel.create_layout_summary()
 
     def predict(self, images, **kwargs):
         pass
@@ -84,7 +65,7 @@ class S2SModel(ABC):
             self.summary_writer.flush()
 
     def do_fit(self, steps, update_steps=1000, callbacks=[], starting_step=0):
-        examples = self.select_examples()
+        examples = self.select_examples_for_visualization()
 
         training_start_time = time.time()
         step_start_time = training_start_time
@@ -113,16 +94,20 @@ class S2SModel(ABC):
                     image_data = io_utils.plot_to_image(image_data)
                     tf.summary.image(save_image_name, image_data, step=(step + 1) // update_steps, max_outputs=5)
 
+                if "show_patches" in callbacks:
+                    print("Showing discriminator patches...")
+                    self.show_discriminated_images("test")
+                    self.show_discriminated_images("train")
+                if "l1" in callbacks:
+                    print(f"Comparing L1 between generated images from train and test...", end="", flush=True)
+                    l1_train, l1_test = self.report_l1(step=(step + 1) // update_steps)
+                    print(f" L1: {l1_train:.5f} / {l1_test:.5f} (train/test)")
                 if "fid" in callbacks:
                     print(
                         f"Calculating Fréchet Inception Distance at {(step + 1) / 1000}k with {TEST_SIZE} examples...",
                         end="", flush=True)
                     train_fid, test_fid = self.report_fid(step=(step + 1) // update_steps)
                     print(f" FID: {train_fid:.3f} / {test_fid:.3f} (train/test)")
-                if "show_patches" in callbacks:
-                    print(f"Showing discriminator patches")
-                    self.show_discriminated_images("test")
-                    self.show_discriminated_images("train")
 
                 print(f"Step: {(step + 1) / 1000}k")
                 if step - starting_step < steps - 1:
@@ -150,7 +135,7 @@ class S2SModel(ABC):
         pass
 
     @abstractmethod
-    def select_examples(self, number_of_examples=5):
+    def select_examples_for_visualization(self, number_of_examples=5):
         pass
 
     @abstractmethod
@@ -159,6 +144,10 @@ class S2SModel(ABC):
 
     @abstractmethod
     def select_real_and_fake_images_for_fid(self, num_images, dataset):
+        pass
+
+    @abstractmethod
+    def evaluate_l1(self, real_images, fake_images):
         pass
 
     def report_fid(self, num_images=TEST_SIZE, step=None):
@@ -176,6 +165,22 @@ class S2SModel(ABC):
                     tf.summary.scalar("test", test_value, step=step,
                                       description=f"Frechét Inception Distance using {num_images} images "
                                                   f"from the TEST dataset")
+
+        return train_value, test_value
+
+    def report_l1(self, num_images=TEST_SIZE, step=None):
+        train_real_images, train_fake_images = self.select_real_and_fake_images_for_fid(num_images, self.train_ds)
+        test_real_images, test_fake_images = self.select_real_and_fake_images_for_fid(num_images, self.test_ds)
+        train_value = self.evaluate_l1(train_real_images, train_fake_images)
+        test_value = self.evaluate_l1(test_real_images, test_fake_images)
+
+        if hasattr(self, "summary_writer") and step is not None:
+            with self.summary_writer.as_default():
+                with tf.name_scope("l1-evaluation"):
+                    tf.summary.scalar("train", train_value, step=step, description=f"L1 between generated and target"
+                                                                                   f" images from TRAIN")
+                    tf.summary.scalar("test", test_value, step=step, description=f"L1 between generated and target"
+                                                                                   f" images from TEST")
 
         return train_value, test_value
 
@@ -248,8 +253,46 @@ class S2SModel(ABC):
         for images in dataset:
             self.show_discriminated_image(images)
 
+    @staticmethod
+    def create_layout_summary():
+        return cs_summary.pb(
+            layout_pb2.Layout(
+                category=[
+                    layout_pb2.Category(
+                        title="Fréchet Inception Distance",
+                        chart=[
+                            layout_pb2.Chart(
+                                title="FID for train and test",
+                                multiline=layout_pb2.MultilineChartContent(
+                                    # regex to select only summaries which
+                                    # are in "scalar_summaries" name scope:
+                                    tag=[r'^fid\/']
+                                )
+                            )
+                        ]
+                    ),
+                    layout_pb2.Category(
+                        title="L1 Evaluation",
+                        chart=[
+                            layout_pb2.Chart(
+                                title="L1 for train and test",
+                                multiline=layout_pb2.MultilineChartContent(
+                                    # regex to select only summaries which
+                                    # are in "scalar_summaries" name scope:
+                                    tag=[r'^l1\-evaluation\/']
+                                )
+                            )
+                        ]
+                    )
+                ]
+            )
+        )
+
 
 class WassersteinLoss(tf.keras.losses.Loss):
+    def __init__(self):
+        super().__init__(name="wasserstein")
+
     def call(self, y_true, y_pred):
         # y_true will be in the range of [0,1] (actually, exactly either one)
         # because of the use of BinaryCrossentropy for the vanilla GAN...

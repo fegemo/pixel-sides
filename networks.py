@@ -4,8 +4,6 @@ from configuration import *
 from custom_layers import MaxPoolingWithArgmax2D, MaxUnpooling2D
 from tensorflow_addons import layers as tfalayers
 
-
-
 def unet_downsample(filters, size, apply_batchnorm=True, init=tf.random_normal_initializer(0., 0.02)):
     result = tf.keras.Sequential()
 #     result.add(layers.Conv2D(filters, size, strides=1, padding="same", kernel_initializer=initializer, use_bias=False))
@@ -26,7 +24,7 @@ def unet_downsample(filters, size, apply_batchnorm=True, init=tf.random_normal_i
         kernel_initializer=init,
         use_bias=False))
     if apply_batchnorm:
-        result.add(layers.BatchNormalization())
+        result.add(tfalayers.InstanceNormalization())
     result.add(layers.LeakyReLU())
 
     return result
@@ -35,12 +33,9 @@ def unet_downsample(filters, size, apply_batchnorm=True, init=tf.random_normal_i
 def unet_upsample(filters, size, apply_dropout=False, init=tf.random_normal_initializer(0., 0.02)):
     result = tf.keras.Sequential()
     result.add(
-        layers.Conv2DTranspose(filters, size, strides=2,
-                                padding="same",
-                                kernel_initializer=init,
-                                use_bias=False))
+        layers.Conv2DTranspose(filters, size, strides=2, padding="same", kernel_initializer=init, use_bias=False))
 
-    result.add(layers.BatchNormalization())
+    result.add(tfalayers.InstanceNormalization())
 
     if apply_dropout:
         result.add(layers.Dropout(0.5))
@@ -61,75 +56,95 @@ def unet_upsample(filters, size, apply_dropout=False, init=tf.random_normal_init
 def PatchDiscriminator(num_patches, **kwargs):
     initializer = tf.random_normal_initializer(0., 0.02)
 
-    input_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="input_image")
+    source_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="source_image")
     target_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="target_image")
 
-    x = layers.concatenate([input_image, target_image])  # (batch_size, 64, 64, channels*2)
-
-    if num_patches > 30:
-        raise ValueError(f"num_patches for the discriminator should not exceed 30, but {num_patches} was given")
+    x = layers.concatenate([target_image, source_image])  # (batch_size, 64, 64, channels*2)
+    # x = CrossProduct()([target_image, source_image])
 
     down = unet_downsample(64, 4, False)(x)  # (batch_size, 32, 32, 64)
-    current_patches = 30
-    next_layer_filters = 64*2
-    while current_patches > max(num_patches, 2):
-        # print(f"Created downsample with {next_layer_filters}")
-        down = unet_downsample(next_layer_filters, 4)(down)
-        current_patches = ((current_patches+2) / 2) - 2
-        next_layer_filters *= 2
-        # print(f"current_patches now {current_patches}")
-    zero_pad2 = layers.ZeroPadding2D()(down)  # (batch_size, 33, 33, 128)
-    last_filter_size = 4 if num_patches > 1 else 5
-    last = layers.Conv2D(1, last_filter_size, strides=1,
-                            kernel_initializer=initializer)(zero_pad2)  # (batch_size, 30, 30, 1)
+    last = layers.Conv2D(1, 4, padding="same",
+                            kernel_initializer=initializer)(down)  # (batch_size, 32, 32, 1)
 
-    return tf.keras.Model(inputs=[input_image, target_image], outputs=last, name="patch-disc")
+    return tf.keras.Model(inputs=[target_image, source_image], outputs=last, name="patch-disc")
     
 
 def Deeper2x2PatchDiscriminator(**kwargs):
     initializer = tf.random_normal_initializer(0., 0.02)
 
-    input_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="input_image")
+    source_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="source_image")
     target_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="target_image")
 
-    x = layers.concatenate([input_image, target_image])  # (batch_size, 64, 64, channels*2)
+    x = layers.concatenate([target_image, source_image])        # (batch_size, 64, 64, channels*2)
 
+    down = unet_downsample(64, 4, False)(x)                     # (batch_size, 32, 32, 64)
+    down = unet_downsample(128, 4, False)(down)                 # (batch_size, 16, 16, 128)
+    # down = unet_downsample(256, 4, False)(down)                 # (batch_size,  8,  8, 256)
 
-    x = layers.Conv2D(64, 4, 1, padding="same", kernel_initializer=initializer, use_bias=False)(x)
-    x = layers.LeakyReLU()(x)
-    
-    x = layers.Conv2D(128, 4, 1, padding="same", kernel_initializer=initializer, use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.LeakyReLU()(x)
-    x = layers.Dropout(0.5)(x)
-    
-    x = layers.Conv2D(256, 4, 1, padding="same", kernel_initializer=initializer, use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.LeakyReLU()(x)
-    x = layers.Dropout(0.5)(x)
-    
-    x = layers.Conv2D(256, 4, strides=2, padding="same", kernel_initializer=initializer, use_bias=False)(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.LeakyReLU()(x)
-    x = layers.Dropout(0.5)(x)
-    
-    # x = layers.Conv2D(64, 4, 1, padding="same", kernel_initializer=initializer, use_bias=False)(x)
-    # x = layers.BatchNormalization()(x)
+    # x = layers.Conv2D(256, 4, padding="same",
+    #                   kernel_initializer=initializer, use_bias=False)(down)     # (batch_size,  8,  8, 512)
+    # x = tfalayers.InstanceNormalization()(x)
     # x = layers.LeakyReLU()(x)
-    
-    last = layers.Conv2D(1, 4, 1, kernel_initializer=initializer)(x)
 
-    return tf.keras.Model(inputs=[input_image, target_image], outputs=last)
+    last = layers.Conv2D(1, 4, padding="same",
+                         kernel_initializer=initializer)(down)     # (batch_size,  8,  8,   1)
+
+    return tf.keras.Model(inputs=[target_image, source_image], outputs=last)
+
+
+class CrossProduct(tf.keras.layers.Layer):
+    def __init__(self):
+        super(CrossProduct, self).__init__()
+
+    def call(self, inputs):
+        x, y = inputs
+        # (None, 64, 64, 4)
+        x_shape = tf.shape(x)
+        y_shape = tf.shape(y)
+        # print("x", x)
+        # print("y", y)
+        batch_size = x_shape[0]
+
+        # strips away with the alpha channel
+        if OUTPUT_CHANNELS == 4:
+            x_alpha = tf.expand_dims(x[:, :, :, 3], -1)
+            # print("x_alpha", x_alpha)
+            x = x[:, :, :, 0:3]
+            y = y[:, :, :, 0:3]
+
+        # reshape to have a flattened list of pixels (all pixels of all images in the batch)
+        x = tf.reshape(x, [batch_size * IMG_SIZE * IMG_SIZE, 3])
+        y = tf.reshape(y, [batch_size * IMG_SIZE * IMG_SIZE, 3])
+        # print("x after flattening", x)
+        # print("y after flattening", y)
+
+        # effectively calculate the cross product between paired pixels from images, then reshapes back to a batch
+        cross_product = tf.linalg.cross(x, y)
+        # print("cross_product", cross_product)
+        cross_product = tf.reshape(cross_product, [batch_size, IMG_SIZE, IMG_SIZE, 3])
+        # print("cross_product after deflattening", cross_product)
+
+        # inserts the alpha channel back, picking the same from x (target/generated image)
+        if OUTPUT_CHANNELS == 4:
+            # print("right before concating")
+            cross_product = tf.concat([cross_product, x_alpha], -1)
+            # print("cross_product after concat", cross_product)
+
+        return cross_product
 
 
 def PatchResnetDiscriminator():
     init = tf.random_normal_initializer(0., 0.02)
 
-    input_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="input_image")
+    source_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="source_image")
     target_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="target_image")
 
-    inputs = layers.concatenate([input_image, target_image])
+    inputs = layers.concatenate([target_image, source_image])
+    # inputs = CrossProduct()([target_image, source_image])
     x = inputs
+
+    x = layers.Conv2D(128, 4, padding="same", kernel_initializer=init)(x)
+    x = layers.LeakyReLU()(x)
 
     x = layers.Conv2D(64, 4, padding="same", kernel_initializer=init, use_bias=False)(x)
     x = tfalayers.InstanceNormalization()(x)
@@ -144,22 +159,20 @@ def PatchResnetDiscriminator():
     x = resblock(x, 64, 4, init)
     x = layers.Dropout(0.5)(x)
     x = resblock(x, 64, 4, init)
-    x = layers.Dropout(0.5)(x)
     x = resblock(x, 64, 4, init)
-    x = layers.Dropout(0.5)(x)
 
     last = layers.Conv2D(1, 4, padding="same", kernel_initializer=init)(x)
 
-    return tf.keras.Model(inputs=[input_image, target_image], outputs=last, name="patch-resnet-disc")
+    return tf.keras.Model(inputs=[target_image, source_image], outputs=last, name="patch-resnet-disc")
 
 
 def IndexedPatchDiscriminator(num_patches, **kwargs):
     initializer = tf.random_normal_initializer(0., 0.02)
 
-    input_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, 1], name="input_image")
+    source_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, 1], name="source_image")
     target_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, 1], name="target_image")
 
-    x = layers.concatenate([input_image, target_image])  # (batch_size, 64, 64, 2)
+    x = layers.concatenate([target_image, source_image])  # (batch_size, 64, 64, 2)
 
     if num_patches > 30:
         raise ValueError(f"num_patches for the discriminator should not exceed 30, but {num_patches} was given")
@@ -178,16 +191,16 @@ def IndexedPatchDiscriminator(num_patches, **kwargs):
     last = layers.Conv2D(1, last_filter_size, strides=1,
                          kernel_initializer=initializer)(zero_pad2)  # (batch_size, 30, 30, 1)
 
-    return tf.keras.Model(inputs=[input_image, target_image], outputs=last, name="indexed-patch-disc")
+    return tf.keras.Model(inputs=[target_image, source_image], outputs=last, name="indexed-patch-disc")
 
 
 def IndexedPatchResnetDiscriminator():
     init = tf.random_normal_initializer(0., 0.02)
 
-    input_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, 1], name="input_image")
+    source_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, 1], name="source_image")
     target_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, 1], name="target_image")
 
-    inputs = layers.concatenate([input_image, target_image])
+    inputs = layers.concatenate([target_image, source_image])
     x = inputs
 
     x = layers.Conv2D(64, 4, padding="same", kernel_initializer=init, use_bias=False)(x)
@@ -203,35 +216,36 @@ def IndexedPatchResnetDiscriminator():
 
     last = layers.Conv2D(1, 4, padding="same", kernel_initializer=init)(x)
 
-    return tf.keras.Model(inputs=[input_image, target_image], outputs=last, name="indexed-patch-resnet-disc")
+    return tf.keras.Model(inputs=[target_image, source_image], outputs=last, name="indexed-patch-resnet-disc")
 
 
 def UnetDiscriminator(**kwargs):
     init = tf.random_normal_initializer(0., 0.02)
 
-    input_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="input_image")
+    source_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="source_image")
     target_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="target_image")
 
-    inputs = layers.concatenate([input_image, target_image])        # (batch_size, 64, 64,    8)
+    inputs = layers.concatenate([target_image, source_image])        # (batch_size, 64, 64,    8)
     
     down_stack = [
-        unet_downsample( 64, 4, apply_batchnorm=False, init=init),  # (batch_size, 32, 32,   64)
-        unet_downsample(128, 4, init=init),                         # (batch_size, 16, 16,  128)
-        unet_downsample(256, 4, init=init),                         # (batch_size,  8,  8,  256)
-        unet_downsample(512, 4, init=init),                         # (batch_size,  4,  4,  512)
-        unet_downsample(512, 4, init=init),                         # (batch_size,  2,  2,  512)
-        unet_downsample(512, 4, init=init),                         # (batch_size,  1,  1,  512)
+        unet_downsample( 16, 4, apply_batchnorm=False, init=init),  # (batch_size, 32, 32,   32)
+        unet_downsample( 32, 4, init=init),                         # (batch_size, 16, 16,   64)
+        unet_downsample( 64, 4, init=init),                         # (batch_size,  8,  8,  128)
+        unet_downsample(128, 4, init=init),                         # (batch_size,  4,  4,  256)
+        unet_downsample(256, 4, init=init),                         # (batch_size,  2,  2,  512)
+        # unet_downsample(512, 4, init=init),                         # (batch_size,  1,  1,  512)
     ]
 
     up_stack = [
-        unet_upsample(512, 4, apply_dropout=True, init=init),       # (batch_size,  2,  2, 1024)
-        unet_upsample(512, 4, apply_dropout=True, init=init),       # (batch_size,  4,  4, 1024)
-        unet_upsample(512, 4, apply_dropout=True, init=init),       # (batch_size,  8,  8, 1024)
-        unet_upsample(512, 4, init=init),                           # (batch_size, 16, 16, 1024)
-        unet_upsample(256, 4, init=init),                           # (batch_size, 32, 32,  512)
+        # unet_upsample(512, 4, apply_dropout=True, init=init),       # (batch_size,  2,  2, 1024)
+        unet_upsample(128, 4, apply_dropout=True, init=init),       # (batch_size,  4,  4,  512)
+        unet_upsample( 64, 4, apply_dropout=True, init=init),       # (batch_size,  8,  8,  256)
+        unet_upsample( 32, 4, init=init),                           # (batch_size, 16, 16,  128)
+        unet_upsample( 16, 4, init=init),                           # (batch_size, 32, 32,   64)
     ]
 
-    last = layers.Conv2D(1, 3, strides=1, kernel_initializer=init)  # (batch_size, 30, 30,    1)
+    last = layers.Conv2DTranspose(1, 4, padding="same", strides=2,
+                                  kernel_initializer=init)          # (batch_size, 64, 64,    1)
 
     x = inputs
 
@@ -242,15 +256,21 @@ def UnetDiscriminator(**kwargs):
         skips.append(x)
 
     skips = reversed(skips[:-1])
+    code_classification = layers.Conv2D(64, 2)(x)
+    code_classification = layers.LeakyReLU()(code_classification)
+    code_classification = layers.Conv2D(1, 1)(code_classification)
+    code_classification = layers.Reshape([1])(code_classification)
+    # code_classification = layers.Flatten()(x)
+    # code_classification = layers.Dense(1)(code_classification)
 
-    # camadas de upsampling e skip connections
+    # # camadas de upsampling e skip connections
     for up, skip in zip(up_stack, skips):
         x = up(x)
         x = layers.Concatenate()([x, skip])
 
     x = last(x)
 
-    return tf.keras.Model(inputs=[input_image, target_image], outputs=x)
+    return tf.keras.Model(inputs=[target_image, source_image], outputs=[x, code_classification], name="unet-disc")
 
 
 
@@ -258,7 +278,6 @@ def UnetDiscriminator(**kwargs):
 
 
 
-from custom_layers import MaxPoolingWithArgmax2D, MaxUnpooling2D
 
 
 def segnet_downsample(inputs, filters, size, convolution_steps=2, init=tf.random_normal_initializer(0., 0.02)):
@@ -304,10 +323,10 @@ def segnet_upsample(inputs, filters, size, convolution_steps=2, apply_dropout=Fa
 def SegnetDiscriminator(**kwargs):
     initializer = tf.random_normal_initializer(0., 0.02)
     
-    input_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="input_image")
+    source_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="source_image")
     target_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="target_image")
 
-    inputs = layers.concatenate([input_image, target_image])  # (batch_size, 64, 64, channels*2)
+    inputs = layers.concatenate([target_image, source_image])  # (batch_size, 64, 64, channels*2)
 
     output = segnet_downsample(inputs, 32, 4, 1),  # (batch_size, 32, 32, 8)
     x, indices0 = output[0][0], output[0][1]
@@ -320,11 +339,11 @@ def SegnetDiscriminator(**kwargs):
 
 
     x = segnet_upsample([x, indices3], 128, 4, 2, apply_dropout=True),  # (batch_size, 8, 8, 32)
-    x = segnet_upsample([x, indices2], 64, 4, 2, apply_dropout=True),  # (batch_size, 16, 16, 16)
-    x = segnet_upsample([x, indices1], 32, 4, 1),  # (batch_size, 32, 32, 8)
+    x = segnet_upsample([x, indices2],  64, 4, 2, apply_dropout=True),  # (batch_size, 16, 16, 16)
+    x = segnet_upsample([x, indices1],  32, 4, 1),  # (batch_size, 32, 32, 8)
 
-    last = layers.Conv2D(1, 3, strides=1,
-                            padding="valid",
+    last = layers.Conv2D(1, 4, strides=1,
+                            padding="same",
                             kernel_initializer=initializer
                         )
 
@@ -332,41 +351,54 @@ def SegnetDiscriminator(**kwargs):
 
     x = last(x[0])
 
-    return tf.keras.Model(inputs=[input_image, target_image], outputs=x, name="segnet-disc")
+    return tf.keras.Model(inputs=[target_image, source_image], outputs=x, name="segnet-disc")
     
 
+# Adapted from GANIMORPH: https://arxiv.org/pdf/1808.04325.pdf
 def AtrousDiscriminator():
+    def conv_block(x, filters, kernel_size, strides, initializer, skip_normalization=False, dilation=1, use_bias=True):
+        x = layers.Conv2D(
+            filters, kernel_size, strides=strides, padding="same",
+            dilation_rate=dilation,
+            use_bias=use_bias,
+            kernel_initializer=initializer)(x)
+        if not skip_normalization:
+            x = tfalayers.InstanceNormalization()(x)
+        x = layers.Activation("relu")(x)
+        return x
+
     init = tf.random_normal_initializer(0., 0.02)
     
-    input_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="input_image")
+    source_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="source_image")
     target_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="target_image")
 
-    inputs = layers.concatenate([input_image, target_image])  # (batch_size, 64, 64, channels*2)
-    
-    x = layers.Conv2D(128, 4, strides=1, padding="same", activation="relu", kernel_initializer=init)(inputs)
-    x = layers.Conv2D(256, 4, strides=1, padding="same", activation="relu", kernel_initializer=init)(x)
-    x = layers.Conv2D(512, 4, strides=2, padding="same", activation="relu", kernel_initializer=init)(x)
-    x = layers.Conv2D(512, 3, strides=1, padding="same", activation="relu", kernel_initializer=init)(x)
+    inputs = layers.concatenate([target_image, source_image])  # (batch_size, 64, 64, channels*2)
+    # inputs = CrossProduct()([target_image, source_image])  # (batch_size, 64, 64, channels*2)
+
+    x = conv_block(inputs, 128, 4, 1, init, skip_normalization=True)
+    x = conv_block(x, 256, 4, 1, init)
+    x = conv_block(x, 512, 4, 2, init)
+    x = conv_block(x, 512, 3, 1, init)
     skip = x
-    
-    x = layers.Conv2D(512, 3, strides=1, dilation_rate=2, padding="same", activation="relu", kernel_initializer=init)(x)
-    x = layers.Conv2D(512, 3, strides=1, dilation_rate=4, padding="same", activation="relu", kernel_initializer=init)(x)
-    x = layers.Conv2D(512, 3, strides=1, dilation_rate=8, padding="same", activation="relu", kernel_initializer=init)(x)
-    
+
+    x = conv_block(x, 512, 3, 1, init, dilation=2, use_bias=False)
+    x = conv_block(x, 512, 3, 1, init, dilation=4, use_bias=False)
+    x = conv_block(x, 512, 3, 1, init, dilation=8, use_bias=False)
+
     x = layers.Concatenate()([x, skip])
-    x = layers.Conv2D(512, 3, strides=1, padding="same", activation="relu", kernel_initializer=init)(x)
-    x = layers.Conv2D(  1, 3, strides=1, padding="valid", kernel_initializer=init)(x)
+    x = conv_block(x, 512, 3, 1, init)
+    x = layers.Conv2D(  1, 4, strides=1, padding="valid", kernel_initializer=init, use_bias=False)(x)
     
-    return tf.keras.Model(inputs=[input_image, target_image], outputs=x, name="atrous-disc")
+    return tf.keras.Model(inputs=[target_image, source_image], outputs=x, name="atrous-disc")
 
 
 def AtrousDiscriminator_out():
     init = tf.random_normal_initializer(0., 0.02)
     
-    input_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="input_image")
+    source_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="source_image")
     target_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="target_image")
 
-    inputs = layers.concatenate([input_image, target_image])  # (batch_size, 64, 64, channels*2)
+    inputs = layers.concatenate([target_image, source_image])  # (batch_size, 64, 64, channels*2)
     
     x = layers.Conv2D(64, 4, strides=1, padding="same", kernel_initializer=init, use_bias=False)(inputs)
     x = layers.BatchNormalization()(x)
@@ -451,7 +483,7 @@ def AtrousDiscriminator_out():
     
     x = layers.Conv2D(1, 3, strides=1, kernel_initializer=init)(x)
 
-    return tf.keras.Model(inputs=[input_image, target_image], outputs=x, name="atrous-disc")
+    return tf.keras.Model(inputs=[target_image, source_image], outputs=x, name="atrous-disc")
 
 
 
@@ -474,7 +506,7 @@ def UnetGenerator():
         unet_upsample(256, 4, apply_dropout=True, init=init),       # (batch_size,  8,  8,  512)
         unet_upsample(128, 4, init=init),                           # (batch_size, 16, 16,  256)
         unet_upsample( 64, 4, init=init),                           # (batch_size, 32, 32,  128)
-        unet_upsample( 32, 4, init=init),                           # (batch_size, 64, 64,   64)
+        unet_upsample( 32, 4, init=init),                           # (batch_size, 64, 64,   36)
     ]
 
     last = layers.Conv2D(OUTPUT_CHANNELS, 4,
@@ -501,7 +533,7 @@ def UnetGenerator():
 
     x = last(x)
 
-    return tf.keras.Model(inputs=inputs, outputs=x)
+    return tf.keras.Model(inputs=inputs, outputs=x, name="unet-gen")
 
 
 def IndexedUnetGenerator():
@@ -510,21 +542,21 @@ def IndexedUnetGenerator():
               # layers.Input(shape=[], name="palette_size")]
 
     down_stack = [
-        unet_downsample( 16, 4, apply_batchnorm=False, init=init),  # (batch_size, 32, 32,   64)
-        unet_downsample( 32, 4, init=init),                         # (batch_size, 16, 16,  128)
-        unet_downsample( 64, 4, init=init),                         # (batch_size,  8,  8,  256)
-        unet_downsample(128, 4, init=init),                         # (batch_size,  4,  4,  512)
-        unet_downsample(128, 4, init=init),                         # (batch_size,  2,  2,  512)
-        unet_downsample(128, 4, init=init),                         # (batch_size,  1,  1,  512)
+        unet_downsample( 32, 4, apply_batchnorm=False, init=init),  # (batch_size, 32, 32,   64)
+        unet_downsample( 64, 4, init=init),                         # (batch_size, 16, 16,  128)
+        unet_downsample(128, 4, init=init),                         # (batch_size,  8,  8,  256)
+        unet_downsample(256, 4, init=init),                         # (batch_size,  4,  4,  512)
+        unet_downsample(512, 4, init=init),                         # (batch_size,  2,  2,  512)
+        unet_downsample(512, 4, init=init),                         # (batch_size,  1,  1,  512)
     ]
 
     up_stack = [
-        unet_upsample(128, 4, apply_dropout=True, init=init),       # (batch_size,  2,  2, 1024)
-        unet_upsample(128, 4, apply_dropout=True, init=init),       # (batch_size,  4,  4, 1024)
-        unet_upsample( 64, 4, apply_dropout=True, init=init),       # (batch_size,  8,  8,  512)
-        unet_upsample( 32, 4, init=init),       # (batch_size, 16, 16,  256)
-        unet_upsample( 16, 4, init=init),       # (batch_size, 32, 32,  128)
-        unet_upsample(  8, 4, init=init),       # (batch_size, 64, 64,   64)
+        unet_upsample(512, 4, apply_dropout=True, init=init),       # (batch_size,  2,  2, 1024)
+        unet_upsample(256, 4, apply_dropout=True, init=init),       # (batch_size,  4,  4, 1024)
+        unet_upsample(128, 4, apply_dropout=True, init=init),       # (batch_size,  8,  8,  512)
+        unet_upsample( 64, 4, init=init),       # (batch_size, 16, 16,  256)
+        unet_upsample( 64, 4, init=init),       # (batch_size, 32, 32,  128)
+        unet_upsample(128, 4, init=init),       # (batch_size, 64, 64,   64)
     ]
 
     last = layers.Conv2D(MAX_PALETTE_SIZE, 4,
@@ -676,7 +708,7 @@ def resblock(x, filters, kernel_size, init):
     
     x = layers.Conv2D(filters, kernel_size, padding="same", kernel_initializer=init, use_bias=False)(x)
     x = tfalayers.InstanceNormalization()(x)
-    x = layers.ReLU()(x)
+    x = layers.LeakyReLU()(x)
     
     x = layers.Conv2D(filters, kernel_size, padding="same", kernel_initializer=init, use_bias=False)(x)
     x = tfalayers.InstanceNormalization()(x)
@@ -694,8 +726,8 @@ def resblock(x, filters, kernel_size, init):
 def StarGANDiscriminator():
     init = tf.random_normal_initializer(0., 0.02)
     
-    input_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="input_image")
-    x = input_image
+    source_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="source_image")
+    x = source_image
     
     # downsampling blocks (1 less than StarGAN b/c our input is star/2)
     filters = 64
@@ -713,14 +745,14 @@ def StarGANDiscriminator():
     classification = layers.Conv2D(NUMBER_OF_DOMAINS, kernel_size=full_kernel_size, strides=1, kernel_initializer=init, use_bias=False)(x)
     classification = layers.Reshape((NUMBER_OF_DOMAINS,), name="domain_classification")(classification)
     
-    return tf.keras.Model(inputs=input_image, outputs=[patches, classification], name="StarGANDiscriminator")
+    return tf.keras.Model(inputs=source_image, outputs=[patches, classification], name="StarGANDiscriminator")
 
 
 def StarGANGenerator():
     init = tf.random_normal_initializer(0., 0.02)
 
-    input_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS + NUMBER_OF_DOMAINS])
-    x = input_image
+    source_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS + NUMBER_OF_DOMAINS])
+    x = source_image
     
     filters = 64
     x = layers.Conv2D(filters, kernel_size=7, strides=1, padding="same", kernel_initializer=init, use_bias=False)(x)
@@ -748,7 +780,7 @@ def StarGANGenerator():
     x = layers.Conv2D(OUTPUT_CHANNELS, kernel_size=7, strides=1, padding="same", kernel_initializer=init, use_bias=False)(x)
     activation = layers.Activation("tanh", name="generated_image")(x)
 
-    return tf.keras.Model(inputs=input_image, outputs=activation, name="StarGANGenerator")
+    return tf.keras.Model(inputs=source_image, outputs=activation, name="StarGANGenerator")
 
 
 
@@ -758,9 +790,9 @@ def StarGANGenerator():
 def TwoPairedStarGANDiscriminator():
     init = tf.random_normal_initializer(0., 0.02)
     
-    input_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="input_image")
+    source_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="source_image")
     target_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="target_image")
-    x = inputs = layers.concatenate([input_image, target_image], axis=-1)
+    x = inputs = layers.concatenate([target_image, source_image], axis=-1)
     
     # downsampling blocks (1 less than StarGAN b/c our input is star/2)
     filters = 64
@@ -778,7 +810,7 @@ def TwoPairedStarGANDiscriminator():
     classification = layers.Conv2D(NUMBER_OF_DOMAINS, kernel_size=full_kernel_size, strides=1, kernel_initializer=init, use_bias=False)(x)
     classification = layers.Reshape((NUMBER_OF_DOMAINS,), name="domain_classification")(classification)
     
-    return tf.keras.Model(inputs=[input_image, target_image], outputs=[patches, classification], name="PairedStarGANDiscriminator")
+    return tf.keras.Model(inputs=[target_image, source_image], outputs=[patches, classification], name="PairedStarGANDiscriminator")
 
 
 # def TwoPairedStarGANGenerator():
@@ -844,7 +876,7 @@ def unet_star_upsample(filters, size, initializer):
 
 def StarGANUnetGenerator():
     initializer = tf.random_normal_initializer(0., 0.02)
-    input_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS + NUMBER_OF_DOMAINS])
+    source_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS + NUMBER_OF_DOMAINS])
 
     down_stack = [
         unet_star_downsample(  64, 4, initializer),  # (batch_size, 32, 32,   64)
@@ -870,7 +902,7 @@ def StarGANUnetGenerator():
                                      kernel_initializer=initializer,
                                      activation="tanh")  # (batch_size, 64, 64, 4)
 
-    x = input_image
+    x = source_image
 
     # downsampling e adicionando as skip-connections
     skips = []
@@ -883,11 +915,11 @@ def StarGANUnetGenerator():
     skips = list(reversed(skips[:-1]))
 
     # camadas de upsampling e skip connections
-    for up, skip in zip(up_stack, [*skips, input_image]):
+    for up, skip in zip(up_stack, [*skips, source_image]):
         # x = resblock(x, 64, 4, initializer)
         x = up(x)
         x = layers.Concatenate()([x, skip])
 
     x = last(x)
 
-    return tf.keras.Model(inputs=input_image, outputs=x, name="StarGANUnetGenerator")
+    return tf.keras.Model(inputs=source_image, outputs=x, name="StarGANUnetGenerator")

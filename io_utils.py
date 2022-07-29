@@ -98,9 +98,14 @@ def extract_palette(image, channels=OUTPUT_CHANNELS, fill_until_size=256):
 
     # sorts them again (stably) putting the darker tones first
     # here, lightness is given by (max(r,g,b) + min(r,g,b)) / 2.0 (as in the RGB to HSL conversion)
-    lightness = ((tf.reduce_max(colors, axis=-1) + tf.reduce_min(colors, axis=-1)) / 2)
-    indices_sorted_by_lightness = tf.argsort(lightness, direction="ASCENDING", stable=True)
-    colors = tf.gather(colors, indices_sorted_by_lightness)
+    # lightness = ((tf.reduce_max(colors, axis=-1) + tf.reduce_min(colors, axis=-1)) / 2)
+    # indices_sorted_by_lightness = tf.argsort(lightness, direction="ASCENDING", stable=True)
+    # colors = tf.gather(colors, indices_sorted_by_lightness)
+    # in_gray = tf.image.rgb_to_grayscale(colors)
+    gray_coefficients = tf.constant([0.2989, 0.5870, 0.1140, 0.])[..., tf.newaxis]
+    grayness = tf.squeeze(tf.matmul(tf.cast(colors, "float32"), gray_coefficients))
+    indices_sorted_by_grayness = tf.argsort(grayness, direction="ASCENDING", stable=True)
+    colors = tf.gather(colors, indices_sorted_by_grayness)
 
     # fills the palette to have 256 colors, so batches can be created (otherwise they can't, tf complains)
     # TODO do something when the palette exceeds MAX_PALETTE_SIZE

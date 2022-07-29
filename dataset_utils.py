@@ -1,4 +1,5 @@
 import tensorflow as tf
+import tensorflow_addons as tfa
 
 import io_utils
 from configuration import *
@@ -60,32 +61,74 @@ def denormalize(image):
     return (image + 1) * 127.5
 
 
-def rotate_hue(image, angle):
-    return tf.image.adjust_hue(image, angle)
+# def rotate_hue(image, angle):
+#     return tf.image.adjust_hue(image, angle)
 
 
 # loads an image from the file system and transforms it for the network:
 # (a) casts to float, (b) ensures transparent pixels are black-transparent, and (c)
 # puts the values in the range of [-1, 1]
-def load_image(path, hue_angle, should_augment, should_normalize=True):
-    image = tf.io.read_file(path)
-    image = tf.image.decode_png(image, channels=INPUT_CHANNELS)
-    image = tf.reshape(image, (IMG_SIZE, IMG_SIZE, INPUT_CHANNELS))
-    image = tf.cast(image, "float32")
-    image = blacken_transparent_pixels(image)
-    if OUTPUT_CHANNELS == 3:
-        image = replace_alpha_with_white(image)
-    if should_augment:
-        image_rgb, image_alpha = image[..., 0:3], image[..., 3]
-        image_rgb = rotate_hue(image_rgb, hue_angle)
-        image = tf.concat([image_rgb, image_alpha[..., tf.newaxis]], axis=-1)
-    if should_normalize:
-        image = normalize(image)
+def load_image(path, should_normalize=True):
+    try:
+        image = tf.io.read_file(path)
+        image = tf.image.decode_png(image, channels=INPUT_CHANNELS)
+        image = tf.reshape(image, (IMG_SIZE, IMG_SIZE, INPUT_CHANNELS))
+        image = tf.cast(image, "float32")
+        image = blacken_transparent_pixels(image)
+        if OUTPUT_CHANNELS == 3:
+            image = replace_alpha_with_white(image)
+        if should_normalize:
+            image = normalize(image)
+    except UnicodeDecodeError:
+        print("Error opening image in ", path)
     return image
 
 
+def augment_hue_rotation(image, seed):
+    image_rgb, image_alpha = image[..., 0:3], image[..., 3]
+    image_rgb = tf.image.stateless_random_hue(image_rgb, 0.5, seed)
+    image = tf.concat([image_rgb, image_alpha[..., tf.newaxis]], axis=-1)
+    return image
+
+
+def augment_translation(images):
+    image = tf.concat([*images], axis=-1)
+    translate = tf.keras.layers.RandomTranslation((-0.15, 0.075), 0.125, fill_mode="constant", interpolation="nearest")
+    image = translate(image)
+    images = tf.split(image, len(images), axis=-1)
+    return tf.tuple(images)
+
+
+def augment_two(first, second):
+    # hue rotation
+    hue_seed = tf.random.uniform(shape=[2], minval=0, maxval=65536, dtype="int32")
+    first = augment_hue_rotation(first, hue_seed)
+    second = augment_hue_rotation(second, hue_seed)
+    # translation
+    first, second = augment_translation((first, second))
+    return first, second
+
+
+def normalize_two(first, second):
+    return normalize(first), normalize(second)
+
+
+def create_augmentation_with_prob(prob=0.8):
+    prob = tf.constant(prob)
+
+    def augmentation_wrapper(first, second):
+        choice = tf.random.uniform(shape=[])
+        should_augment = choice < prob
+        if should_augment:
+            return augment_two(first, second)
+        else:
+            return first, second
+
+    return augmentation_wrapper
+
+
 def create_paired_s2s_image_loader_indexed_images(sprite_side_source, sprite_side_target, dataset_sizes,
-                                                  train_or_test_folder, should_augment):
+                                                  train_or_test_folder, should_augment=False):
     """
     Returns a function which takes an integer in the range of [0, DATASET_SIZE-1] and loads some image file
     from the corresponding dataset (using image_number and DATASET_SIZES to decide) representing images by
@@ -96,8 +139,8 @@ def create_paired_s2s_image_loader_indexed_images(sprite_side_source, sprite_sid
         source_path = tf.strings.join([dataset, train_or_test_folder, folders[sprite_side_source], image_number + ".png"], os.sep)
         target_path = tf.strings.join([dataset, train_or_test_folder, folders[sprite_side_target], image_number + ".png"], os.sep)
 
-        source_image = tf.cast(load_image(source_path, 0., should_augment, should_normalize=False), "int32")
-        target_image = tf.cast(load_image(target_path, 0., should_augment, should_normalize=False), "int32")
+        source_image = tf.cast(load_image(source_path, should_normalize=False), "int32")
+        target_image = tf.cast(load_image(target_path, should_normalize=False), "int32")
 
         # concatenates source and target so the colors in one have the same palette indices as the other
         concatenated_image = tf.concat([source_image, target_image], axis=-1)
@@ -133,13 +176,11 @@ def create_paired_s2s_image_loader_indexed_images(sprite_side_source, sprite_sid
     return load_images
 
 
-def create_paired_s2s_image_loader(sprite_side_source, sprite_side_target, dataset_sizes, train_or_test_folder,
-                                   should_augment):
+def create_paired_s2s_image_loader(sprite_side_source, sprite_side_target, dataset_sizes, train_or_test_folder):
     """
     Returns a function which takes an integer in the range of [0, DATASET_SIZE-1] and loads some image file
     from the corresponding dataset (using image_number and DATASET_SIZES to decide).
     """
-
     def load_images(image_number):
         image_number = tf.cast(image_number, "int32")
 
@@ -152,19 +193,49 @@ def create_paired_s2s_image_loader(sprite_side_source, sprite_side_target, datas
         image_number, dataset_index = tf.while_loop(condition, body, [image_number, dataset_index])
 
         # defines the angle to which rotate hue
-        hue_angle = tf.random.uniform(shape=[], minval=-1., maxval=1.)
+        # augmentation_dice = np.random.random()
+        # tf.print("augmentation_dice", augmentation_dice)
+        # should_augment = augmentation_dice < augmentation_probability
+        # tf.print("should_augment", should_augment)
+        # should_augment = True
+        # hue_angle = tf.random.uniform(shape=[], minval=-1., maxval=1.)
+        # tf.print("hue_angle", hue_angle)
+        # augmentation_seed = np.random.randint(0, 65536)
+        # augmentation_seed = image_number #tf.random.uniform(shape=[], dtype="int32", minval=0, maxval=65536)
+        # tf.print("augmentation_seed", augmentation_seed)
+        # augmentation_seed = image_number
 
         # gets the string pointing to the correct images
         dataset = tf.gather(DATA_FOLDERS, dataset_index)
         image_number = tf.strings.as_string(image_number)
 
         # loads and transforms the images according to how the generator and discriminator expect them to be
+        # tf.print("loading input ", tf.strings.join(
+        #     [dataset, os.sep, train_or_test_folder, os.sep, DIRECTION_FOLDERS[sprite_side_source], os.sep, image_number,
+        #      ".png"]))
+        # tf.print("loading target ", tf.strings.join(
+        #     [dataset, os.sep, train_or_test_folder, os.sep, DIRECTION_FOLDERS[sprite_side_target], os.sep, image_number,
+        #      ".png"]))
         input_image = load_image(tf.strings.join(
             [dataset, os.sep, train_or_test_folder, os.sep, DIRECTION_FOLDERS[sprite_side_source], os.sep, image_number,
-             ".png"]), hue_angle, should_augment)
+             ".png"]), False)#, hue_angle, augmentation_seed, should_augment)
         real_image = load_image(tf.strings.join(
             [dataset, os.sep, train_or_test_folder, os.sep, DIRECTION_FOLDERS[sprite_side_target], os.sep, image_number,
-             ".png"]), hue_angle, should_augment)
+             ".png"]), False)#, hue_angle, augmentation_seed, should_augment)
+
+        # # augmentation
+        # if should_augment:
+        #     hue_seed = tf.random.uniform(shape=[2], minval=0, maxval=65536, dtype="int32")
+        #     # translate_seed = tf.random.uniform(shape=[], minval=0, maxval=65536, dtype="int32").numpy()
+        #
+        #     input_image = augment_hue_rotation(input_image, hue_seed)
+        #     real_image = augment_hue_rotation(real_image, hue_seed)
+        #
+        #     input_image, real_image = augment_translation((input_image, real_image))
+        #
+        # # transforms from [0,255] to [-1,1]
+        # input_image = normalize(input_image)
+        # real_image = normalize(real_image)
 
         return input_image, real_image
 

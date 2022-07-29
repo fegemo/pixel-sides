@@ -64,7 +64,7 @@ class StarGANModel(S2SModel):
         total_loss = fake_loss + real_loss + real_domain_loss + gp_regularization
         return total_loss, real_loss, fake_loss, real_domain_loss, gp_regularization
 
-    def select_examples(self, num_examples=6):
+    def select_examples_for_visualization(self, num_examples=6):
         num_train_examples = num_examples // 2
         num_test_examples = num_examples - num_train_examples
 
@@ -276,6 +276,7 @@ class StarGANModel(S2SModel):
 
         plt.show()
 
+
 class PairedStarGANModel(StarGANModel):
     def __init__(self, train_ds, test_ds, model_name, architecture_name, discriminator_type="twopairedstargan",
                  generator_type="stargan", lambda_gp=10., lambda_domain=1., lambda_reconstruction=10., lambda_l1=100.,
@@ -310,7 +311,7 @@ class PairedStarGANModel(StarGANModel):
         total_loss = fake_loss + real_loss + real_domain_loss + gp_regularization
         return total_loss, real_loss, fake_loss, real_domain_loss, gp_regularization
 
-    def select_examples(self, num_examples=6):
+    def select_examples_for_visualization(self, num_examples=6):
         num_train_examples = num_examples // 2
         num_test_examples = num_examples - num_train_examples
 
@@ -328,7 +329,8 @@ class PairedStarGANModel(StarGANModel):
             source_image, _ = source
             target_image, target_domain = target
 
-            fake_image = self.generator(io_utils.concat_image_and_domain_label(source_image, target_domain), training=True)
+            fake_image = self.generator(io_utils.concat_image_and_domain_label(source_image, target_domain),
+                                        training=True)
             real_images[i] = tf.squeeze(target_image).numpy()
             fake_images[i] = tf.squeeze(fake_image).numpy()
 
@@ -362,7 +364,7 @@ class PairedStarGANModel(StarGANModel):
             with tf.GradientTape() as gp_tape:
                 fake_image = self.generator(image_and_label, training=True)
                 fake_image_mixed = gp_epsilon * target_image + (1 - gp_epsilon) * fake_image
-                fake_mixed_predicted, _ = self.discriminator([source_image, fake_image_mixed], training=True)
+                fake_mixed_predicted, _ = self.discriminator([fake_image_mixed, source_image], training=True)
 
             # computando o gradient penalty
             gp_grads = gp_tape.gradient(fake_mixed_predicted, fake_image_mixed)
@@ -370,9 +372,9 @@ class PairedStarGANModel(StarGANModel):
             gradient_penalty = tf.reduce_mean(tf.square(gp_grad_norms - 1))
 
             # passando imagens reais e fake pelo crítico
-            real_predicted_patches, real_predicted_domain = self.discriminator([source_image, target_image],
+            real_predicted_patches, real_predicted_domain = self.discriminator([target_image, source_image],
                                                                                training=True)
-            fake_predicted_patches, fake_predicted_domain = self.discriminator([source_image, fake_image],
+            fake_predicted_patches, fake_predicted_domain = self.discriminator([fake_image, source_image],
                                                                                training=True)
 
             c_loss = self.discriminator_loss(real_predicted_patches, real_predicted_domain, target_domain,
@@ -403,7 +405,7 @@ class PairedStarGANModel(StarGANModel):
                 image_and_label_backward = io_utils.concat_image_and_domain_label(fake_image, source_domain)
                 reconstructed_image = self.generator(image_and_label_backward, training=True)
 
-                fake_predicted_patches, fake_predicted_domain = self.discriminator([source_image, fake_image],
+                fake_predicted_patches, fake_predicted_domain = self.discriminator([fake_image, source_image],
                                                                                    training=True)
 
                 g_loss = self.generator_loss(fake_predicted_patches, fake_predicted_domain, target_domain, source_image,
@@ -475,12 +477,34 @@ class PairedStarGANModel(StarGANModel):
         image_and_label = io_utils.concat_image_and_domain_label(source_image, target_domain)
         fake_image = self.generator(image_and_label, training=True)
 
-        real_predicted, _ = self.discriminator([source_image, target_image])
-        fake_predicted, _ = self.discriminator([source_image, fake_image])
+        real_predicted, _ = self.discriminator([target_image, source_image])
+        fake_predicted, _ = self.discriminator([fake_image, source_image])
         real_predicted = real_predicted[0]
         fake_predicted = fake_predicted[0]
 
         return target_image, fake_image, real_predicted, fake_predicted
+
+
+class CollaGANModel(PairedStarGANModel):
+    def __init__(self, train_ds, test_ds, model_name, architecture_name, discriminator_type,
+                 generator_type, lambda_gp=10., lambda_domain=1., lambda_reconstruction=10., lambda_l1=100.,
+                 discriminator_steps=5):
+        super().__init__(train_ds, test_ds, model_name, architecture_name, discriminator_type, generator_type,
+                         lambda_gp, lambda_domain, lambda_reconstruction, lambda_l1, discriminator_steps)
+
+    def create_discriminator(self, discriminator_type):
+        if discriminator_type == "collagan":
+            return CollaGANDiscriminator()
+        else:
+            raise ValueError(f"The provided {discriminator_type} type for generator has not been implemented.")
+
+    def create_generator(self, generator_type):
+        if generator_type == "collagan":
+            return CollaGANGenerator()
+        else:
+            raise ValueError(f"The provided {generator_type} type for generator has not been implemented.")
+
+
 
 
 # modifica StarGAN para receber um número variado de inputs de domínios etiquetados
