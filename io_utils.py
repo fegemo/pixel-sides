@@ -71,7 +71,7 @@ def concat_image_and_domain_label(image, onehot_label):
 #     return random_source, random_target
 
 # @tf.function
-def extract_palette(image, channels=OUTPUT_CHANNELS, fill_until_size=256):
+def extract_palette(image, channels=OUTPUT_CHANNELS, fill_until_size=256, resulting_image_type="int32"):
     """
     Extracts the unique colors from an image (3D tensor)
     Parameters
@@ -85,11 +85,10 @@ def extract_palette(image, channels=OUTPUT_CHANNELS, fill_until_size=256):
     """
     # incoming image shape: (IMG_SIZE, IMG_SIZE, channels)
     # reshaping to: (IMG_SIZE*IMG_SIZE, channels)
-    image = tf.cast(image, "int32")
+    image = tf.cast(image, resulting_image_type)
     # image = image[::-1, ::-1]  # sorting by appearance: bottom-right to top-left
     image = tf.reshape(image, [-1, channels])
     colors, _, count = tf.raw_ops.UniqueWithCountsV2(x=image, axis=[0])
-
     # colors = tf.reverse(colors, [0])  # sorting by appearance: last appeared color comes first
     # colors = tf.random.shuffle(colors)  # shuffled colors
     # sorts the colors by the amount of times it appeared
