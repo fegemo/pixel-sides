@@ -109,8 +109,26 @@ def augment_two(first, second):
     return first, second
 
 
+def augment_two_with_labels(first, second):
+    first_image, first_label = first
+    second_image, second_label = second
+    # hue rotation
+    hue_seed = tf.random.uniform(shape=[2], minval=0, maxval=65536, dtype="int32")
+    first_image = augment_hue_rotation(first_image, hue_seed)
+    second_image = augment_hue_rotation(second_image, hue_seed)
+    # translation
+    first_image, second_image = augment_translation((first_image, second_image))
+    return (first_image, first_label), (second_image, second_label)
+
+
 def normalize_two(first, second):
     return normalize(first), normalize(second)
+
+
+def normalize_two_with_labels(first, second):
+    first_image, first_label = first
+    second_image, second_label = second
+    return (normalize(first_image), first_label), (normalize(second_image), second_label)
 
 
 def create_augmentation_with_prob(prob=0.8):
@@ -121,6 +139,20 @@ def create_augmentation_with_prob(prob=0.8):
         should_augment = choice < prob
         if should_augment:
             return augment_two(first, second)
+        else:
+            return first, second
+
+    return augmentation_wrapper
+
+
+def create_augmentation_with_prob_with_labels(prob=0.8):
+    prob = tf.constant(prob)
+
+    def augmentation_wrapper(first, second):
+        choice = tf.random.uniform(shape=[])
+        should_augment = choice < prob
+        if should_augment:
+            return augment_two_with_labels(first, second)
         else:
             return first, second
 
@@ -242,17 +274,17 @@ def create_paired_s2s_image_loader(sprite_side_source, sprite_side_target, datas
     return load_images
 
 
-def create_paired_star_image_loader(dataset_sizes, train_or_test_folder, should_augment):
+def create_paired_star_image_loader(dataset_sizes, train_or_test_folder, should_normalize=True, identity_prob=0.05):
     """
     Creates an image loader for the datasets (as configured in configuration.py) in such a way that
     all directions of the same character are grouped together.
     Used for paired (supervised) learning such as PairedStarGAN and later.
     """
 
-    def load_image_and_label(dataset, side_index, image_number, hue_angle):
+    def load_image_and_label(dataset, side_index, image_number):
         path = tf.strings.join(
             [dataset, train_or_test_folder, tf.gather(DIRECTION_FOLDERS, side_index), image_number + ".png"], os.sep)
-        image = load_image(path, hue_angle, should_augment)
+        image = load_image(path, should_normalize)
         domain = tf.one_hot(side_index, len(DIRECTION_FOLDERS))
         return image, domain
 
@@ -267,22 +299,27 @@ def create_paired_star_image_loader(dataset_sizes, train_or_test_folder, should_
         image_number, dataset_index = tf.while_loop(condition, body, [image_number, dataset_index])
 
         # defines the angle to which rotate hue
-        hue_angle = tf.random.uniform(shape=[], minval=-1., maxval=1.)
+        # hue_angle = tf.random.uniform(shape=[], minval=-1., maxval=1.)
 
         # gets the string pointing to the correct images
         dataset = tf.gather(DATA_FOLDERS, dataset_index)
         image_number = tf.strings.as_string(image_number)
 
         # finds random source and target side
-        indices = tf.random.uniform(shape=[2], minval=0, maxval=len(DIRECTION_FOLDERS), dtype="int32")
-        source_index = indices[0]
-        target_index = indices[1]
+        should_target_and_source_be_the_same = tf.random.uniform(shape=()) < identity_prob
+        source_index = tf.random.uniform(shape=(), minval=0, maxval=len(DIRECTION_FOLDERS), dtype="int32")
+        if should_target_and_source_be_the_same:
+            target_index = source_index
+        else:
+            target_index = tf.random.uniform(shape=(), minval=0, maxval=len(DIRECTION_FOLDERS), dtype="int32")
+            while target_index == source_index:
+                target_index = tf.random.uniform(shape=(), minval=0, maxval=len(DIRECTION_FOLDERS), dtype="int32")
 
         # loads and transforms the images according to how the generator and discriminator expect them to be
-        source = load_image_and_label(dataset, source_index, image_number, hue_angle)
+        source = load_image_and_label(dataset, source_index, image_number)
         # source_domain = tf.one_hot(source_index, len(DIRECTION_FOLDERS))
 
-        target = load_image_and_label(dataset, target_index, image_number, hue_angle)
+        target = load_image_and_label(dataset, target_index, image_number)
         # target_domain = tf.one_hot(target_index, len(DIRECTION_FOLDERS))
 
         # back, _ = load_image_and_label(dataset, 0, image_number, hue_angle)

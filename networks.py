@@ -792,7 +792,7 @@ def TwoPairedStarGANDiscriminator():
     
     source_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="source_image")
     target_image = layers.Input(shape=[IMG_SIZE, IMG_SIZE, OUTPUT_CHANNELS], name="target_image")
-    x = inputs = layers.concatenate([target_image, source_image], axis=-1)
+    x = layers.concatenate([target_image, source_image], axis=-1)
     
     # downsampling blocks (1 less than StarGAN b/c our input is star/2)
     filters = 64

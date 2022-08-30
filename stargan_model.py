@@ -22,8 +22,8 @@ class StarGANModel(S2SModel):
         self.generator = self.create_generator(generator_type)
         self.discriminator = self.create_discriminator(discriminator_type)
         self.domain_classification_loss = tf.keras.losses.BinaryCrossentropy(from_logits=True)
-        self.generator_optimizer = tf.keras.optimizers.Adam(0.0002, beta_1=0.5)
-        self.discriminator_optimizer = tf.keras.optimizers.Adam(0.0002, beta_1=0.5)
+        self.generator_optimizer = tf.keras.optimizers.Adam(0.0002, beta_1=0.5, beta_2=0.999)
+        self.discriminator_optimizer = tf.keras.optimizers.Adam(0.0002, beta_1=0.5, beta_2=0.999)
         self.checkpoint = tf.train.Checkpoint(
             generator_optimizer=self.generator_optimizer,
             discriminator_optimizer=self.discriminator_optimizer,
@@ -292,24 +292,28 @@ class PairedStarGANModel(StarGANModel):
             raise ValueError(f"The provided {discriminator_type} type for generator has not been implemented.")
 
     def generator_loss(self, critic_fake_patches, critic_fake_domain, fake_domain, fake_image, reconstructed_image,
-                       target_image):
+                       target_image, source_image):
         fake_loss = -tf.reduce_mean(critic_fake_patches)
-        fake_domain_loss = self.lambda_domain * self.domain_classification_loss(fake_domain, critic_fake_domain)
-        reconstruction_loss = self.lambda_reconstruction * tf.reduce_mean(tf.abs(reconstructed_image - fake_image))
-        l1_loss = self.lambda_l1 * tf.reduce_mean(tf.abs(target_image - fake_image))
+        fake_domain_loss = self.domain_classification_loss(fake_domain, critic_fake_domain)
+        reconstruction_loss = tf.reduce_mean(tf.abs(source_image - reconstructed_image))
+        l1_loss = tf.reduce_mean(tf.abs(target_image - fake_image))
 
-        total_loss = fake_loss + fake_domain_loss + reconstruction_loss + l1_loss
+        total_loss = fake_loss + \
+            self.lambda_domain * fake_domain_loss +\
+            self.lambda_reconstruction * reconstruction_loss +\
+            self.lambda_l1 * l1_loss
         return total_loss, fake_loss, fake_domain_loss, reconstruction_loss, l1_loss
 
     def discriminator_loss(self, critic_real_patches, critic_real_domain, real_domain, critic_fake_patches,
                            gradient_penalty):
         real_loss = -tf.reduce_mean(critic_real_patches)
         fake_loss = tf.reduce_mean(critic_fake_patches)
-        real_domain_loss = self.lambda_domain * self.domain_classification_loss(real_domain, critic_real_domain)
-        gp_regularization = self.lambda_gp * gradient_penalty
+        real_domain_loss = self.domain_classification_loss(real_domain, critic_real_domain)
 
-        total_loss = fake_loss + real_loss + real_domain_loss + gp_regularization
-        return total_loss, real_loss, fake_loss, real_domain_loss, gp_regularization
+        total_loss = fake_loss + real_loss + \
+            self.lambda_domain * real_domain_loss +\
+            self.lambda_gp * gradient_penalty
+        return total_loss, real_loss, fake_loss, real_domain_loss, gradient_penalty
 
     def select_examples_for_visualization(self, num_examples=6):
         num_train_examples = num_examples // 2
@@ -409,7 +413,7 @@ class PairedStarGANModel(StarGANModel):
                                                                                    training=True)
 
                 g_loss = self.generator_loss(fake_predicted_patches, fake_predicted_domain, target_domain, source_image,
-                                             reconstructed_image, target_image)
+                                             reconstructed_image, target_image, source_image)
                 generator_loss, generator_adversarial_loss, generator_domain_loss, generator_reconstruction_loss, generator_l1_loss = g_loss
 
             generator_gradients = gen_tape.gradient(generator_loss, self.generator.trainable_variables)
@@ -484,6 +488,9 @@ class PairedStarGANModel(StarGANModel):
 
         return target_image, fake_image, real_predicted, fake_predicted
 
+    def evaluate_l1(self, real_images, fake_images):
+        return tf.reduce_mean(tf.abs(fake_images - real_images))
+
 
 class CollaGANModel(PairedStarGANModel):
     def __init__(self, train_ds, test_ds, model_name, architecture_name, discriminator_type,
@@ -503,8 +510,6 @@ class CollaGANModel(PairedStarGANModel):
             return CollaGANGenerator()
         else:
             raise ValueError(f"The provided {generator_type} type for generator has not been implemented.")
-
-
 
 
 # modifica StarGAN para receber um número variado de inputs de domínios etiquetados
