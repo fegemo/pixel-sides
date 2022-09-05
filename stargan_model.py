@@ -46,23 +46,23 @@ class StarGANModel(S2SModel):
         else:
             raise ValueError(f"The provided {discriminator_type} type for discriminator has not been implemented.")
 
-    def generator_loss(self, critic_fake_patches, critic_fake_domain, fake_domain, fake_image, reconstructed_image):
+    def generator_loss(self, critic_fake_patches, critic_fake_domain, fake_domain, real_image, reconstructed_image):
         fake_loss = -tf.reduce_mean(critic_fake_patches)
-        fake_domain_loss = self.lambda_domain * self.domain_classification_loss(fake_domain, critic_fake_domain)
-        reconstruction_loss = self.lambda_reconstruction * tf.reduce_mean(tf.abs(reconstructed_image - fake_image))
+        fake_domain_loss = self.domain_classification_loss(fake_domain, critic_fake_domain)
+        reconstruction_loss = tf.reduce_mean(tf.abs(reconstructed_image - real_image))
 
-        total_loss = fake_loss + fake_domain_loss + reconstruction_loss
+        total_loss = fake_loss + self.lambda_domain * fake_domain_loss + self.lambda_reconstruction * reconstruction_loss
         return total_loss, fake_loss, fake_domain_loss, reconstruction_loss
 
     def discriminator_loss(self, critic_real_patches, critic_real_domain, real_domain, critic_fake_patches,
                            gradient_penalty):
         real_loss = -tf.reduce_mean(critic_real_patches)
         fake_loss = tf.reduce_mean(critic_fake_patches)
-        real_domain_loss = self.lambda_domain * self.domain_classification_loss(real_domain, critic_real_domain)
-        gp_regularization = self.lambda_gp * gradient_penalty
+        real_domain_loss = self.domain_classification_loss(real_domain, critic_real_domain)
+        gp_regularization = gradient_penalty
 
-        total_loss = fake_loss + real_loss + real_domain_loss + gp_regularization
-        return total_loss, real_loss, fake_loss, real_domain_loss, gp_regularization
+        total_loss = fake_loss + real_loss + self.lambda_domain * real_domain_loss + self.lambda_gp * gradient_penalty
+        return total_loss, real_loss, fake_loss, real_domain_loss, gradient_penalty
 
     def select_examples_for_visualization(self, num_examples=6):
         num_train_examples = num_examples // 2
@@ -144,7 +144,7 @@ class StarGANModel(S2SModel):
 
                 # reconstruct the image to the original domain
                 image_and_label = io_utils.concat_image_and_domain_label(fake_image, real_domain)
-                reconstructed_image = self.generator(image_and_label)
+                reconstructed_image = self.generator(image_and_label, training=True)
 
                 g_loss = self.generator_loss(fake_predicted_patches, fake_predicted_domain, domain_target_onehot,
                                              real_image, reconstructed_image)
@@ -174,7 +174,13 @@ class StarGANModel(S2SModel):
 
         figure = plt.figure(figsize=(4 * num_columns, 4 * num_images))
 
-        for i, (real_image, real_domain, target_domain) in enumerate(examples):
+        for i, batch in enumerate(examples):
+            if len(batch) == 3:
+                (real_image, real_domain, target_domain) = batch
+            else:
+                (real_image, real_domain) = batch
+                target_domain = io_utils.random_domain_label(1)
+
             target_domain_side_index = tf.argmax(target_domain[0], axis=0)
             target_domain_name = DIRECTION_FOLDERS[
                 target_domain_side_index]  # tf.gather(DIRECTION_FOLDERS, target_domain_side_index)
@@ -275,6 +281,9 @@ class StarGANModel(S2SModel):
         plt.axis("off")
 
         plt.show()
+
+    def evaluate_l1(self, real_images, fake_images):
+        return tf.reduce_mean(tf.abs(fake_images - real_images))
 
 
 class PairedStarGANModel(StarGANModel):

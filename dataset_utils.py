@@ -342,7 +342,7 @@ def create_paired_star_image_loader(dataset_sizes, train_or_test_folder, should_
     return load_images
 
 
-def create_unpaired_image_loader(dataset_sizes, train_or_test_folder, should_augment):
+def create_unpaired_image_loader(dataset_sizes, train_or_test_folder, should_normalize):
     """
     Creates an image loader for the datasets (as configured in configuration.py) in such a way that
     images are all unrelated but keep a label of which side it is from.
@@ -372,7 +372,7 @@ def create_unpaired_image_loader(dataset_sizes, train_or_test_folder, should_aug
 
         # loads and transforms the images according to how the generator and discriminator expect them to be
         image_path = tf.strings.join([dataset, train_or_test_folder, side_folder, file_number + ".png"], os.sep)
-        image = load_image(image_path, hue_angle, should_augment)
+        image = load_image(image_path, should_normalize)
         label = tf.one_hot(side_index, len(DIRECTION_FOLDERS))
 
         return image, label
