@@ -1,5 +1,5 @@
 import tensorflow as tf
-import tensorflow_addons as tfa
+from functools import partial
 
 import io_utils
 from configuration import *
@@ -378,3 +378,111 @@ def create_unpaired_image_loader(dataset_sizes, train_or_test_folder, should_nor
         return image, label
 
     return load_images
+
+
+def create_collaborative_image_loader(dataset_sizes, train_or_test_folder, should_normalize=True, input_dropout=[1,2,3]):
+    """
+    Creates an image loader for the datasets (as configured in configuration.py) in such a way that
+    all directions of the same character are grouped together.
+    Used for CollaGAN.
+    """
+
+    # def load_image_and_label(dataset, side_index, image_number):
+    #     path = tf.strings.join(
+    #         [dataset, train_or_test_folder, tf.gather(DIRECTION_FOLDERS, side_index), image_number + ".png"], os.sep)
+    #     image = load_image(path, should_normalize)
+    #     domain = tf.one_hot(side_index, len(DIRECTION_FOLDERS))
+    #     return image, domain
+
+    def create_input_dropout_index_list(inputs_to_drop):
+        """
+        Creates a list shape=(DOMAINS, TO_DROP, ? DOMAINS) that is, per possible target pose index (first dimension),
+        for each possible number of dropped inputs (second dimension): all permutations of a boolean array that
+        (a) nullifies the target index and (b) nullifies a number of additional inputs equal to 0, 1 or 2 (determined
+        by inputs_to_drop).
+        Parameters
+        ----------
+        inputs_to_drop a list of the number of inputs we want to drop. Must be at least [1], but can be [1, 2],
+        [1, 2, 3], or [1, 3].
+
+        Returns a 4d array with all the permutations described.
+        -------
+
+        """
+        null_lists_per_target_index = []
+        for target_index in range(NUMBER_OF_DOMAINS):
+            null_list_for_current_target = []
+            for number_of_inputs_to_drop in inputs_to_drop:
+                tmp_a = []
+                if number_of_inputs_to_drop == 1:
+                    tmp = [bX == target_index for bX in range(NUMBER_OF_DOMAINS)]
+                    tmp_a.append(tmp)
+
+                elif number_of_inputs_to_drop == 2:
+                    for i_in in range(NUMBER_OF_DOMAINS):
+                        if not i_in == target_index:
+                            tmp = [bX in [i_in, target_index] for bX in range(NUMBER_OF_DOMAINS)]
+                            tmp_a.append(tmp)
+
+                elif number_of_inputs_to_drop == 3:
+                    for i_in in range(NUMBER_OF_DOMAINS):
+                        if not (i_in == target_index):
+                            tmp = [(bX == target_index or (not bX == i_in)) for bX in range(NUMBER_OF_DOMAINS)]
+                            tmp_a.append(tmp)
+
+                null_list_for_current_target.append(tmp_a)
+            null_lists_per_target_index.append(null_list_for_current_target)
+
+        return null_lists_per_target_index
+
+    def load_a_side_image(dataset, side_index, image_number):
+        path = tf.strings.join(
+            [dataset, train_or_test_folder, tf.gather(DIRECTION_FOLDERS, side_index), image_number + ".png"], os.sep
+        )
+        return load_image(path, should_normalize)
+
+    def channelize_domain(index):
+        one_hot_domain = tf.one_hot(index, NUMBER_OF_DOMAINS)
+        channelized_domain = tf.tile(one_hot_domain[tf.newaxis, tf.newaxis, :], [IMG_SIZE, IMG_SIZE, 1])
+        return channelized_domain
+
+    @tf.function
+    def load_images(dropout_null_list, image_number):
+        image_number = tf.cast(image_number, "int32")
+
+        dataset_index = tf.constant(0, dtype="int32")
+        condition = lambda which_image, which_dataset: which_image >= tf.gather(dataset_sizes, which_dataset)
+        body = lambda which_image, which_dataset: [which_image - tf.gather(dataset_sizes, which_dataset),
+                                                   which_dataset + 1]
+        image_number, dataset_index = tf.while_loop(condition, body, [image_number, dataset_index])
+
+        # gets the string pointing to the correct images
+        dataset = tf.gather(DATA_FOLDERS, dataset_index)
+        image_number = tf.strings.as_string(image_number)
+
+        # loads all images from the disk
+        back_image = load_a_side_image(dataset, 0, image_number)
+        left_image = load_a_side_image(dataset, 1, image_number)
+        front_image = load_a_side_image(dataset, 2, image_number)
+        right_image = load_a_side_image(dataset, 3, image_number)
+
+        # finds a random target side
+        target_domain_index = tf.random.uniform(shape=[], maxval=NUMBER_OF_DOMAINS, dtype="int32")
+        target_domain_mask = channelize_domain(target_domain_index)
+
+        # applies input dropout as described in the CollaGAN paper and implemented in the code
+        #  this is adapted from getBatch_RGB_varInp in CollaGAN
+        #  a. randomly choose an input dropout mask such as [True, False, False, True]
+        dropout_null_list_for_target = tf.gather(dropout_null_list, target_domain_index)
+        random_number_of_inputs_to_drop = tf.random.uniform(shape=[], maxval=tf.shape(dropout_null_list_for_target)[0], dtype="int32")
+        dropout_null_list_for_target_and_number_of_inputs = tf.gather(dropout_null_list_for_target, random_number_of_inputs_to_drop)
+        random_permutation_index = tf.random.uniform(shape=[], maxval=tf.shape(dropout_null_list_for_target_and_number_of_inputs)[0], dtype="int32")
+        input_dropout_mask = tf.gather(dropout_null_list_for_target_and_number_of_inputs, random_permutation_index)
+
+        #  b. do apply the dropout by creating an input mask
+        # TODO... the CollaGAN implementation does not do anything with the input images at this point
+
+        return back_image, left_image, front_image, right_image, target_domain_index, target_domain_mask, input_dropout_mask
+
+    null_list = tf.ragged.constant(create_input_dropout_index_list(input_dropout), ragged_rank=2, dtype="bool")
+    return partial(load_images, null_list)
