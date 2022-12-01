@@ -126,11 +126,7 @@ export class ColorPicker extends Tool {
 
     const primaryOrSecondary = ['primary', 'secondary'].find(type => name.toLowerCase().includes(type))
     this.specialColorSlot = primaryOrSecondary // can also be undefined
-
-    this.activated()
-    this.inputs[0].value = defaultColor
-    this.inputs[0].dispatchEvent(new Event('input'));
-    this.deactivated()
+    this.defaultColor = defaultColor
   }
 
   activated() {
@@ -139,14 +135,15 @@ export class ColorPicker extends Tool {
 
   deactivated() {
     this.inputs.forEach(el => el.removeEventListener('input', this.bindColor))
-    // this.editor.removeEventListener('change-primary-color', this.setEditorSlotColor)
-    // this.editor.removeEventListener('change-secondary-color', this.setEditorSlotColor)
   }
 
   attachToEditor(editor) {
     super.attachToEditor(editor)
-    this.editor.addEventListener('change-primary-color', this.setEditorSlotColor)
-    this.editor.addEventListener('change-secondary-color', this.setEditorSlotColor)
+
+    this.activated()
+    this.inputs[0].value = this.defaultColor
+    this.inputs[0].dispatchEvent(new Event('input'));
+    this.deactivated()
   }
 
   bindColor(e) {
@@ -162,25 +159,8 @@ export class ColorPicker extends Tool {
     })
 
     // tells the editor a primary or secondary color was selected
-    if (this.specialColorSlot && this.editor) {
-      const eventDetail = {
-        detail: { slot: this.specialColorSlot, value: chosenColor }
-      }
-      const e = new CustomEvent(`change-${this.specialColorSlot}-color`, eventDetail)
-      this.editor.dispatchEvent(e)
+    if (this.specialColorSlot) {
+      this.editor[this.specialColorSlot + 'Color'] = chosenColor
     }
-  }
-
-  setEditorSlotColor(e) {
-      switch (e.detail.slot) {
-        case 'primary':
-          e.currentTarget.primaryColor = e.detail.value
-          console.log('Just set primary color to ' + e.detail.value)
-          break
-        case 'secondary':
-          e.currentTarget.secondaryColor = e.detail.value
-          console.log('Just set secondary color to ' + e.detail.value)
-          break
-      }
   }
 }
