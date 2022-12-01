@@ -2,6 +2,7 @@ export default class Canvas {
   constructor(el, editor, size) {
     this.el = el
     this.editor = editor
+    this.ctx = el.getContext('2d')
     
     this.el.addEventListener('mousemove', this.showMouseStats.bind(this))
     this.editor.containerEl.addEventListener('wheel', this.zoomInOrOut.bind(this))
@@ -13,9 +14,15 @@ export default class Canvas {
   }
 
   showMouseStats(e) {
+    const rect = e.currentTarget.getBoundingClientRect(),
+      offsetX = Math.floor((e.clientX - rect.left) / this.editor.zoom),
+      offsetY = Math.floor((e.clientY - rect.top) / this.editor.zoom);
+
     this.editor.mousePosition = {
-      x: e.offsetX,
-      y: e.offsetY,
+      // x: e.offsetX,
+      // y: e.offsetY
+      x: offsetX,
+      y: offsetY
     }
   }
 

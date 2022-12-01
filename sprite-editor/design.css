@@ -58,7 +58,9 @@ h1, h2, h3, h4, h5, h6 {
 
 #main-canvas {
   image-rendering: pixelated;
-  background-size: calc(var(--other-canvas-size) / 86) calc(var(--other-canvas-size) / 86);
+  /* find out why 81 works... or maybe just drop it for 2px 2px */
+  /* background-size: calc(var(--other-canvas-size) / 81) calc(var(--other-canvas-size) / 81); */
+  background-size: 2px 2px;
   transition: all 200ms ease;
   transform: scale(1);
 }
