@@ -1,4 +1,4 @@
-import { lineEFLA, equalPosition } from './algorithms.js'
+import { lineEFLA, equalPosition, floodFill } from './algorithms.js'
 
 export class Command {
   constructor(name, params) {
@@ -106,5 +106,31 @@ export class LineCommand extends Command {
     const { x: targetX, y: targetY } = this.params.endPosition
     editor.canvas.ctx.lineTo(targetX, targetY)
     editor.canvas.ctx.restore()
+  }
+}
+
+export class BucketCommand extends Command {
+  constructor(color, position) {
+    super('bucket', { color, position })
+  }
+
+  configure(editor) {
+    editor.canvas.ctx.save()
+    editor.canvas.ctx.fillStyle = this.params.color
+  }
+
+  deconfigure(editor) {
+    editor.canvas.ctx.restore()
+  }
+
+  execute(editor) {
+    const ctx = editor.canvas.ctx
+    this.configure(editor)
+    floodFill(
+      ctx.getImageData(0, 0, editor.canvas.width, editor.canvas.height),
+      this.params.position,
+      ({x, y}) => ctx.fillRect(x, y, 1, 1)
+    )
+    this.deconfigure(editor)
   }
 }

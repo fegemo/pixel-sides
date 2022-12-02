@@ -1,4 +1,4 @@
-import { PencilCommand } from "./commands.js"
+import { BucketCommand, PencilCommand } from "./commands.js"
 
 class Tool {
   constructor(name, exclusionGroup, triggerElements, shortcut) {
@@ -178,14 +178,22 @@ export class Pen extends Tool {
 export class Bucket extends Tool {
   constructor(elements) {
     super('Bucket', 'regular-tools', elements, 'B')
+    this.draw = this.draw.bind(this)
+  }
+
+  draw(e) {
+    const color = e.button === 0 ? this.editor.primaryColor : this.editor.secondaryColor
+    const command = new BucketCommand(color, this.editor.mousePosition)
+    command.execute(this.editor)
+    this.editor.recordCommand(command)
   }
 
   activated() {
-
+    this.editor.canvas.el.addEventListener('mouseup', this.draw)
   }
 
   deactivated() {
-
+    this.editor.canvas.el.removeEventListener('mouseup', this.draw)
   }
 }
 
