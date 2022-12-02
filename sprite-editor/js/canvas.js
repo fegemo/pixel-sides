@@ -2,10 +2,10 @@ export default class Canvas {
   constructor(el, editor, size) {
     this.el = el
     this.editor = editor
-    this.ctx = el.getContext('2d')
+    this.ctx = el.getContext('2d', { willReadFrequently: true })
     
     this.el.addEventListener('mousemove', this.showMouseStats.bind(this))
-    this.editor.containerEl.addEventListener('wheel', this.zoomInOrOut.bind(this))
+    this.editor.containerEl.addEventListener('wheel', this.zoomInOrOut.bind(this), { passive: true })
     if (size) {
       setTimeout(() => this.resizeToFixedAndZoom.bind(this)(size), 0)
     } else {
@@ -49,6 +49,27 @@ export default class Canvas {
     this.editor.zoom = scale
   }
 
+  save() {
+    this.ctx.save()
+    return this.ctx.getImageData(0, 0, this.width, this.height)
+  }
+
+  restore(imageData) {
+    this.ctx.restore()
+    this.ctx.putImageData(imageData, 0, 0)
+  }
+
+  clear() {
+    this.ctx.clearRect(0, 0, this.width, this.height)
+  }
+
+  get width() {
+    return this.el.width
+  }
+
+  get height() {
+    return this.el.height
+  }
 }
 
 

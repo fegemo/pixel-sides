@@ -1,4 +1,4 @@
-import Command from "./commands.js"
+import { PencilCommand } from "./commands.js"
 
 class Tool {
   constructor(name, exclusionGroup, triggerElements, shortcut) {
@@ -60,9 +60,6 @@ class Tool {
     throw new Error('Called abstract method "deactivated" of the Tool')
   }
 
-  get command() {
-    throw new Error('Called abstract getter "command" of the Tool')
-  }
 }
 
 export class Pencil extends Tool {
@@ -72,17 +69,105 @@ export class Pencil extends Tool {
   }
 
   draw(e) {
-    const { x, y } = this.editor.mousePosition
-    this.editor.canvas.ctx.fillStyle = this.editor.primaryColor
-    this.editor.canvas.ctx.fillRect(x, y, 1, 1);
+    switch (e.type) {
+      case 'mousedown':
+        if (this.activelyDrawing) {
+          return
+        }
+        this.savedCanvas = this.editor.canvas.save()
+        const color = e.button == 0 ? this.editor.primaryColor : this.editor.secondaryColor
+        this.command = new PencilCommand(color, [this.editor.mousePosition])
+        
+        this.activelyDrawing = true
+        break
+
+      case 'mouseup':
+        if (this.activelyDrawing) {
+          this.editor.canvas.restore(this.savedCanvas)
+          this.command.execute(this.editor)
+          this.editor.recordCommand(this.command)
+  
+          this.activelyDrawing = false
+        }
+        break
+
+      case 'mousemove':
+        if (this.activelyDrawing) {
+          const position = this.editor.mousePosition
+
+          this.command.logPosition(position)
+          this.command.iterate(this.editor, position)
+        }
+        break
+    }
   }
 
   activated() {
-    this.editor.canvas.el.addEventListener('click', this.draw)
+    ['mousedown', 'mousemove', 'mouseup'].forEach(type =>
+      this.editor.canvas.el.addEventListener(type, this.draw)
+    )
   }
 
   deactivated() {
-    this.editor.canvas.el.removeEventListener('click', this.draw)
+    ['mousedown', 'mousemove', 'mouseup'].forEach(type =>
+      this.editor.canvas.el.removeEventListener(type, this.draw)
+    )
+  }
+}
+export class Pen extends Tool {
+  constructor(elements) {
+    super('Pen', 'regular-tools', elements, 'E')
+    this.draw = this.draw.bind(this)
+    this.mousedownPosition = null
+    this.positionsToPaint = null
+  }
+
+  draw(e) {
+    switch (e.type) {
+      case 'mousedown':
+        this.savedCanvas = this.editor.canvas.ctx.getImageData(0, 0, this.editor.canvas.width, this.editor.canvas.height)
+        this.mousedownPosition = this.editor.mousePosition
+        this.positionsToPaint = [this.mousedownPosition]
+        break
+
+      case 'mouseup':
+        this.editor.canvas.ctx.putImageData(this.savedCanvas, 0, 0)
+        const color = e.button == 0 ? this.editor.primaryColor : this.editor.secondaryColor
+        const command = new PenCommand(color, this.positionsToPaint)
+        command.execute(this.editor)
+
+        this.mousedownPosition = null
+        this.positionsToPaint = null
+        break
+
+      case 'mousemove':
+        if (Array.isArray(this.positionsToPaint)) {
+          const { x, y } = this.editor.mousePosition
+          const { x: lastX, y: lastY } = this.positionsToPaint.at(-1)
+          if (x !== lastX || y !== lastY) {
+            this.positionsToPaint.push({ x, y })
+          }
+        }
+
+        if (this.mousedownPosition) {
+          const { x, y } = this.editor.mousePosition
+          this.editor.canvas.ctx.fillStyle = this.editor.primaryColor
+          this.editor.canvas.ctx.fillRect(x, y, 1, 1);
+        }
+        break
+    }
+  }
+
+  activated() {
+    this.editor.canvas.el.addEventListener('mousedown', this.draw)
+    this.editor.canvas.el.addEventListener('mousemove', this.draw)
+    this.editor.canvas.el.addEventListener('mouseup', this.draw)
+  }
+
+  deactivated() {
+    this.editor.canvas.el.removeEventListener('mousedown', this.draw)
+    this.editor.canvas.el.removeEventListener('mousemove', this.draw)
+    this.editor.canvas.el.removeEventListener('mouseup', this.draw)
   }
 
   get command() {

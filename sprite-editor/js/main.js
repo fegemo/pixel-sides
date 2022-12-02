@@ -1,6 +1,5 @@
 import Canvas from './canvas.js'
 import { Pencil, Bucket, Ellipsis, ColorPicker } from './tools.js'
-import commands from './commands.js'
 import generators from './generators.js'
 
 class Editor extends EventTarget {
@@ -8,6 +7,8 @@ class Editor extends EventTarget {
   #mousePosition
   #primaryColor
   #secondaryColor
+  #executedCommands = []
+  #undoneCommands = []
   
   constructor(containerEl, canvasEl, tools, canvasSize) {
     super()
@@ -15,7 +16,9 @@ class Editor extends EventTarget {
     this.canvas = new Canvas(canvasEl, this, canvasSize)
     this.tools = tools
     this.canvasSize = canvasSize
-    
+    this.#executedCommands = []
+    this.#undoneCommands = []
+
     tools.forEach(t => t.attachToEditor(this))
     this.mouseStatsElements = {
       containerEl: containerEl.querySelector('#mouse-stats'),
@@ -25,6 +28,8 @@ class Editor extends EventTarget {
     }
     
     this.zoom = 1
+
+    this.containerEl.ownerDocument.defaultView.addEventListener('keydown', this.keyboardMultiplexer.bind(this))
   }
   
   updateMouseStats(info) {
@@ -38,7 +43,48 @@ class Editor extends EventTarget {
       this.mouseStatsElements.zoomEl.innerHTML = info.zoom
     }
   }
+
+  recordCommand(command) {
+    this.#executedCommands.push(command)
+    this.#undoneCommands.length = 0
+  }
+
+  undo() {
+    const undone = this.#executedCommands.pop()
+    if (undone) {
+      this.#undoneCommands.push(undone)
+      this.replayCommands()
+    }
+  }
+
+  redo() {
+    const redone = this.#undoneCommands.pop()
+    if (redone) {
+      this.#executedCommands.push(redone)
+      this.replayCommands()
+    }
+  }
+
+  replayCommands() {
+    this.canvas.clear()
+    for (let command of this.#executedCommands) {
+      command.execute(this)
+    }
+  }
   
+  keyboardMultiplexer(e) {
+    // Ctrl+z
+    if (e.type === 'keydown' && e.ctrlKey && e.key === 'z') {
+      e.preventDefault()
+      this.undo()
+    }
+    // Ctrl+y
+    else if (e.type === 'keydown' && e.ctrlKey && e.key === 'y') {
+      e.preventDefault()
+      this.redo()
+    }
+  }
+
   get zoom() {
     return this.#zoom
   }
