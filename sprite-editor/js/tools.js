@@ -69,6 +69,11 @@ export class Pencil extends Tool {
   }
 
   draw(e) {
+    // consider only left/right buttons
+    if (e.button !== 0 && e.button !== 2) {
+      return
+    }
+
     switch (e.type) {
       case 'mousedown':
         if (this.activelyDrawing) {
@@ -102,18 +107,27 @@ export class Pencil extends Tool {
     }
   }
 
+  disableContextMenu(e) {
+    e.preventDefault()
+    return false
+  }
+
   activated() {
     ['mousedown', 'mousemove', 'mouseup'].forEach(type =>
       this.editor.canvas.el.addEventListener(type, this.draw)
     )
+    this.editor.canvas.el.addEventListener('contextmenu', this.disableContextMenu)
   }
 
   deactivated() {
     ['mousedown', 'mousemove', 'mouseup'].forEach(type =>
       this.editor.canvas.el.removeEventListener(type, this.draw)
     )
+    this.editor.canvas.el.removeEventListener('contextmenu', this.disableContextMenu)
   }
 }
+
+
 export class Pen extends Tool {
   constructor(elements) {
     super('Pen', 'regular-tools', elements, 'E')
@@ -132,7 +146,7 @@ export class Pen extends Tool {
 
       case 'mouseup':
         this.editor.canvas.ctx.putImageData(this.savedCanvas, 0, 0)
-        const color = e.button == 0 ? this.editor.primaryColor : this.editor.secondaryColor
+        const color = e.button === 0 ? this.editor.primaryColor : this.editor.secondaryColor
         const command = new PenCommand(color, this.positionsToPaint)
         command.execute(this.editor)
 
@@ -169,10 +183,6 @@ export class Pen extends Tool {
     this.editor.canvas.el.removeEventListener('mousemove', this.draw)
     this.editor.canvas.el.removeEventListener('mouseup', this.draw)
   }
-
-  get command() {
-
-  }
 }
 
 export class Bucket extends Tool {
@@ -188,12 +198,19 @@ export class Bucket extends Tool {
     this.editor.recordCommand(command)
   }
 
+  disableContextMenu(e) {
+    e.preventDefault()
+    return false
+  }
+
   activated() {
     this.editor.canvas.el.addEventListener('mouseup', this.draw)
+    this.editor.canvas.el.addEventListener('contextmenu', this.disableContextMenu)
   }
 
   deactivated() {
     this.editor.canvas.el.removeEventListener('mouseup', this.draw)
+    this.editor.canvas.el.removeEventListener('contextmenu', this.disableContextMenu)
   }
 }
 
