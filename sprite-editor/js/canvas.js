@@ -41,7 +41,6 @@ export default class Canvas {
   }
 
   zoomInOrOut(e) {
-    e.preventDefault()
     let scale = this.editor.zoom
     scale += e.deltaY * -0.005
     scale = Math.min(Math.max(.125, scale), 20);
