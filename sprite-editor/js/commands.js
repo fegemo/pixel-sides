@@ -58,6 +58,19 @@ export class PencilCommand extends Command {
   }
 }
 
+export class EraserCommand extends PencilCommand {
+  constructor(color, erasedPositions) {
+    super(color, erasedPositions)
+    this.name = 'eraser'
+  }
+
+  configure(editor) {
+    super.configure(editor)
+    editor.canvas.ctx.fillStyle = this.params.color
+    editor.canvas.ctx.globalCompositeOperation = 'destination-out'
+  }
+}
+
 export class PenCommand extends Command {
   constructor(color, paintedPositions) {
     super('pencil', { color, paintedPositions })

@@ -1,4 +1,4 @@
-import { BucketCommand, PencilCommand } from "./commands.js"
+import { BucketCommand, EraserCommand, PencilCommand } from "./commands.js"
 
 class Tool {
   constructor(name, exclusionGroup, triggerElements, shortcut) {
@@ -6,16 +6,7 @@ class Tool {
     this.exclusionGroup = exclusionGroup
     this.active = false
     this.els = triggerElements
-    // this.shortcut = shortcut
-
-    triggerElements.forEach(el => el.addEventListener('click', this.activate.bind(this)))
-    if (shortcut) {
-      document.addEventListener('keyup', e => {
-        if (e.key.toLowerCase() === shortcut.toLowerCase()) {
-          this.activate()
-        }
-      })
-    }
+    this.shortcut = shortcut
   }
 
   attachToEditor(editor) {
@@ -25,6 +16,15 @@ class Tool {
     }
     if (!this.editor.tools.includes(this)) {
       this.editor.tools.append(this)
+    }
+
+    this.els.forEach(el => el.addEventListener('click', this.activate.bind(this)))
+    if (this.shortcut) {
+      this.editor.containerEl.ownerDocument.addEventListener('keyup', e => {
+        if (e.key.toLowerCase() === this.shortcut.toLowerCase()) {
+          this.activate()
+        }
+      })
     }
   }
 
@@ -80,8 +80,7 @@ export class Pencil extends Tool {
           return
         }
         this.savedCanvas = this.editor.canvas.save()
-        const color = e.button == 0 ? this.editor.primaryColor : this.editor.secondaryColor
-        this.command = new PencilCommand(color, [this.editor.mousePosition])
+        this.command = this.commandBuilder(e)
         
         this.activelyDrawing = true
         break
@@ -107,6 +106,11 @@ export class Pencil extends Tool {
     }
   }
 
+  commandBuilder(e) {
+    const color = e.button == 0 ? this.editor.primaryColor : this.editor.secondaryColor
+    return new PencilCommand(color, [this.editor.mousePosition])
+  }
+
   disableContextMenu(e) {
     e.preventDefault()
     return false
@@ -128,60 +132,17 @@ export class Pencil extends Tool {
 }
 
 
-export class Pen extends Tool {
+export class Eraser extends Pencil {
+  #eraserColor = '#000F'
+
   constructor(elements) {
-    super('Pen', 'regular-tools', elements, 'E')
-    this.draw = this.draw.bind(this)
-    this.mousedownPosition = null
-    this.positionsToPaint = null
+    super(elements)
+    this.name = 'Eraser'
+    this.shortcut = 'E'
   }
 
-  draw(e) {
-    switch (e.type) {
-      case 'mousedown':
-        this.savedCanvas = this.editor.canvas.ctx.getImageData(0, 0, this.editor.canvas.width, this.editor.canvas.height)
-        this.mousedownPosition = this.editor.mousePosition
-        this.positionsToPaint = [this.mousedownPosition]
-        break
-
-      case 'mouseup':
-        this.editor.canvas.ctx.putImageData(this.savedCanvas, 0, 0)
-        const color = e.button === 0 ? this.editor.primaryColor : this.editor.secondaryColor
-        const command = new PenCommand(color, this.positionsToPaint)
-        command.execute(this.editor)
-
-        this.mousedownPosition = null
-        this.positionsToPaint = null
-        break
-
-      case 'mousemove':
-        if (Array.isArray(this.positionsToPaint)) {
-          const { x, y } = this.editor.mousePosition
-          const { x: lastX, y: lastY } = this.positionsToPaint.at(-1)
-          if (x !== lastX || y !== lastY) {
-            this.positionsToPaint.push({ x, y })
-          }
-        }
-
-        if (this.mousedownPosition) {
-          const { x, y } = this.editor.mousePosition
-          this.editor.canvas.ctx.fillStyle = this.editor.primaryColor
-          this.editor.canvas.ctx.fillRect(x, y, 1, 1);
-        }
-        break
-    }
-  }
-
-  activated() {
-    this.editor.canvas.el.addEventListener('mousedown', this.draw)
-    this.editor.canvas.el.addEventListener('mousemove', this.draw)
-    this.editor.canvas.el.addEventListener('mouseup', this.draw)
-  }
-
-  deactivated() {
-    this.editor.canvas.el.removeEventListener('mousedown', this.draw)
-    this.editor.canvas.el.removeEventListener('mousemove', this.draw)
-    this.editor.canvas.el.removeEventListener('mouseup', this.draw)
+  commandBuilder() {
+    return new EraserCommand(this.#eraserColor, [this.editor.mousePosition])
   }
 }
 
