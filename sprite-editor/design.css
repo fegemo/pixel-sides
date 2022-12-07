@@ -7,8 +7,8 @@
   --sans-font: "Abel", sans-serif;
   --mono-font: "Share Tech Mono", monospace;
   --tool-button-bg-color: #fff3;
-  --checker-color-1: white;
-  --checker-color-2: silver;
+  --checker-color-1: #f1f1f1;
+  --checker-color-2: #cccccc;
 }
 
 body {
@@ -37,8 +37,9 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .checkerboard-background, #main-canvas {
-  background-image: repeating-conic-gradient(var(--checker-color-1) 0% 25%, var(--checker-color-2) 0% 50%);
+  background-image: url(img/fake.png);
   background-size: calc(var(--other-canvas-size) / 10) calc(var(--other-canvas-size) / 10);
+  image-rendering: pixelated;
   background-position: center;
 }
 
@@ -57,9 +58,6 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 #main-canvas {
-  image-rendering: pixelated;
-  /* find out why 81 works... or maybe just drop it for 2px 2px */
-  /* background-size: calc(var(--other-canvas-size) / 81) calc(var(--other-canvas-size) / 81); */
   background-size: 2px 2px;
   transition: all 200ms ease;
   transform: scale(1);
