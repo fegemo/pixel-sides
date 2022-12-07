@@ -33,6 +33,8 @@ class Tool {
       throw new Error(`Activated a tool (${this.name}) which was not attached to any editor`)
     }
 
+    this.preActivation()
+
     // 1. deactivate previously activated from the same exclusion group
     const activeToolsFromSameGroup = this.editor.tools.filter(t => t.exclusionGroup === this.exclusionGroup && t.active)
     activeToolsFromSameGroup.forEach(t => t.deactivate())
@@ -50,6 +52,10 @@ class Tool {
     this.active = false
     this.els.forEach(el => el.classList.remove('active-tool'))
     this.deactivated()
+  }
+
+  preActivation() {
+    // allow tools to override
   }
 
   activated() {
@@ -107,7 +113,7 @@ export class Pencil extends Tool {
   }
 
   commandBuilder(e) {
-    const color = e.button == 0 ? this.editor.primaryColor : this.editor.secondaryColor
+    const color = e.button == 0 ? this.editor.primaryColor.get() : this.editor.secondaryColor.get()
     return new PencilCommand(color, [this.editor.mousePosition])
   }
 
@@ -153,7 +159,7 @@ export class Bucket extends Tool {
   }
 
   draw(e) {
-    const color = e.button === 0 ? this.editor.primaryColor : this.editor.secondaryColor
+    const color = e.button === 0 ? this.editor.primaryColor.get() : this.editor.secondaryColor.get()
     const command = new BucketCommand(color, this.editor.mousePosition)
     command.execute(this.editor)
     this.editor.recordCommand(command)
@@ -189,6 +195,67 @@ export class Ellipsis extends Tool {
   }
 }
 
+export class EyeDropper extends Tool {
+  constructor(elements) {
+    super('Eye Dropper', 'regular-tools', elements, 'D')
+    this.pickColor = this.pickColor.bind(this)
+  }
+
+  pickColor(e) {
+    // consider only left/right buttons
+    if (e.button !== 0 && e.button !== 2) {
+      return
+    }
+
+    switch (e.type) {
+      case 'mousedown':
+        this.primaryOrSecondary = e.button === 0 ? 'primary' : 'secondary'
+        this.savedColor = this.editor[this.primaryOrSecondary + 'Color'].get()
+        this.picking = true
+        // fallthrough to 'mousemove'
+
+      case 'mousemove':
+        if (this.picking) {
+          const { x, y } = this.editor.mousePosition
+          const [r, g, b, a] = this.editor.canvas.ctx.getImageData(x, y, 1, 1).data
+          this.editor[this.primaryOrSecondary + 'Color'].set(`rgba(${r}, ${g}, ${b}, ${a})`)
+        }
+        break
+
+      case 'mouseup':
+        this.picking = false
+        this.currentPixelColors = null
+        if (this.savedTool) {
+          this.savedTool.activate()
+        }
+        break
+
+      case 'mouseout':
+        if (this.picking) {
+          this.picking = false
+          this.editor[this.primaryOrSecondary + 'Color'].set(this.savedColor)
+        }
+    }
+  }
+
+  preActivation() {
+    // saves the previous tool to reactivate it upon color selection
+    this.savedTool = this.editor.getActiveTool()
+  }
+
+  activated() {
+    ['mousedown', 'mousemove', 'mouseup', 'mouseout'].forEach(type =>
+      this.editor.canvas.el.addEventListener(type, this.pickColor)
+    )
+  }
+
+  deactivated() {
+    ['mousedown', 'mousemove', 'mouseup', 'mouseout'].forEach(type =>
+      this.editor.canvas.el.removeEventListener(type, this.pickColor)
+    )
+  }
+}
+
 export class ColorPicker extends Tool {
   constructor(name, elements, defaultColor) {
     super(name, 'color-picker', elements)
@@ -211,6 +278,17 @@ export class ColorPicker extends Tool {
   attachToEditor(editor) {
     super.attachToEditor(editor)
 
+    // binds the color swatches to the value of the editor prop
+    // (so it updates when an outside tool (such as eye dropper)
+    //  changes the primary/secondary color outside here)
+    if (this.specialColorSlot) {
+      this.editor[this.specialColorSlot + 'Color'].addListener((value) => {
+        // sets the swatch bg color accordingly
+        this.inputs.forEach(el => el.closest('.swatch').style.backgroundColor = value)
+      })
+
+    }
+
     this.activated()
     this.inputs[0].value = this.defaultColor
     this.inputs[0].dispatchEvent(new Event('input'));
@@ -221,17 +299,9 @@ export class ColorPicker extends Tool {
     // gets the color selected by the user
     const chosenColor = e.currentTarget.value
 
-    // sets the swatch bg color accordingly
-    this.inputs.forEach(el => {
-      el.closest('.swatch').style.backgroundColor = chosenColor
-      if (el !== e.currentTarget) {
-        el.value = chosenColor
-      }
-    })
-
     // tells the editor a primary or secondary color was selected
     if (this.specialColorSlot) {
-      this.editor[this.specialColorSlot + 'Color'] = chosenColor
+      this.editor[this.specialColorSlot + 'Color'].set(chosenColor)
     }
   }
 }

@@ -1,12 +1,13 @@
 import Canvas from './canvas.js'
-import { Pencil, Bucket, Eraser, ColorPicker } from './tools.js'
+import { Pencil, Bucket, Eraser, EyeDropper, ColorPicker } from './tools.js'
 import generators from './generators.js'
+import Observable from './observable.js'
 
 class Editor extends EventTarget {
   #zoom
   #mousePosition
-  #primaryColor
-  #secondaryColor
+  #primaryColor = new Observable()
+  #secondaryColor = new Observable()
   #executedCommands = []
   #undoneCommands = []
   
@@ -85,6 +86,14 @@ class Editor extends EventTarget {
     }
   }
 
+  getActiveTool(toolGroup) {
+    let toolsToConsider = this.tools || []
+    if (toolGroup) {
+      toolsToConsider = toolsToConsider.filter(tool => tool.exclusionGroup === toolGroup)
+    }
+    return toolsToConsider.find(tool => tool.active)
+  }
+
   get zoom() {
     return this.#zoom
   }
@@ -109,11 +118,11 @@ class Editor extends EventTarget {
   }
   
   set primaryColor(value) {
-    this.#primaryColor = value
+    this.#primaryColor.set(value)
   }
   
   get primaryColorAsInt() {
-    return Editor.hexToRGB(this.#primaryColor)
+    return Editor.hexToRGB(this.#primaryColor.get())
   }
   
   get secondaryColor() {
@@ -121,11 +130,11 @@ class Editor extends EventTarget {
   }
   
   set secondaryColor(value) {
-    this.#secondaryColor = value
+    this.#secondaryColor.set(value)
   }
 
   get secondaryColorAsInt() {
-    return Editor.hexToRGB(this.#secondaryColor)
+    return Editor.hexToRGB(this.#secondaryColor.get())
   }
 
   static hexToRGB(hex) {
@@ -142,6 +151,7 @@ const editor = new Editor(
     new Pencil(document.querySelectorAll('#pencil-tool')),
     new Bucket(document.querySelectorAll('#bucket-tool')),
     new Eraser(document.querySelectorAll('#eraser-tool')),
+    new EyeDropper(document.querySelectorAll('#eye-dropper-tool')),
     new ColorPicker('Primary Color', document.querySelectorAll('#primary-color'), '#7890e8'),
     new ColorPicker('Secondary Color', document.querySelectorAll('#secondary-color'), '#ffffff'),
   ],
