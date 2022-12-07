@@ -1,5 +1,5 @@
 import Canvas from './canvas.js'
-import { Pencil, Bucket, Eraser, EyeDropper, ColorPicker } from './tools.js'
+import { Pencil, Bucket, Eraser, Line, EyeDropper, ColorPicker } from './tools.js'
 import generators from './generators.js'
 import Observable from './observable.js'
 
@@ -151,6 +151,7 @@ const editor = new Editor(
     new Pencil(document.querySelectorAll('#pencil-tool')),
     new Bucket(document.querySelectorAll('#bucket-tool')),
     new Eraser(document.querySelectorAll('#eraser-tool')),
+    new Line(document.querySelectorAll('#line-tool')),
     new EyeDropper(document.querySelectorAll('#eye-dropper-tool')),
     new ColorPicker('Primary Color', document.querySelectorAll('#primary-color'), '#7890e8'),
     new ColorPicker('Secondary Color', document.querySelectorAll('#secondary-color'), '#ffffff'),

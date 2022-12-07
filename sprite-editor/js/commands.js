@@ -108,17 +108,25 @@ export class LineCommand extends Command {
     super('line', { color, startPosition, endPosition })
   }
 
-  execute(editor) {
+  configure(editor) {
     editor.canvas.ctx.save()
+    editor.canvas.ctx.fillStyle = this.params.color
+  }
 
-    editor.canvas.ctx.strokeStyle = this.params.color
-
-    const { x: startX, y: startY } = this.params.startPosition
-    editor.canvas.ctx.moveTo(startX, startY)
-
-    const { x: targetX, y: targetY } = this.params.endPosition
-    editor.canvas.ctx.lineTo(targetX, targetY)
+  deconfigure(editor) {
     editor.canvas.ctx.restore()
+  }
+
+  execute(editor) {
+    this.configure(editor)
+    const startPosition = this.params.startPosition
+    const endPosition = this.params.endPosition
+    lineEFLA((x, y) => editor.canvas.ctx.fillRect(x, y, 1, 1), startPosition, endPosition)
+    this.deconfigure(editor)
+  }
+
+  updatePosition(position) {
+    this.params.endPosition = position
   }
 }
 

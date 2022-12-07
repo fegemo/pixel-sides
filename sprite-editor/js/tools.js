@@ -1,12 +1,15 @@
-import { BucketCommand, EraserCommand, PencilCommand } from "./commands.js"
+import { BucketCommand, EraserCommand, LineCommand, PencilCommand } from "./commands.js"
 
 class Tool {
-  constructor(name, exclusionGroup, triggerElements, shortcut) {
+  #shouldDisableMenu
+
+  constructor(name, exclusionGroup, triggerElements, shortcut, shouldDisableMenu = true) {
     this.name = name
     this.exclusionGroup = exclusionGroup
     this.active = false
     this.els = triggerElements
     this.shortcut = shortcut
+    this.#shouldDisableMenu = shouldDisableMenu
   }
 
   attachToEditor(editor) {
@@ -33,6 +36,7 @@ class Tool {
       throw new Error(`Activated a tool (${this.name}) which was not attached to any editor`)
     }
 
+    // call preActivation hook
     this.preActivation()
 
     // 1. deactivate previously activated from the same exclusion group
@@ -42,12 +46,20 @@ class Tool {
     // 2. call the underlying activation specific to the tool
     this.active = true
     this.els.forEach(el => el.classList.add('active-tool'))
+
+    if (this.#shouldDisableMenu) {
+      this.editor.canvas.el.addEventListener('contextmenu', this.#disableContextMenu)
+    }
+
     this.activated()
   }
 
   deactivate() {
     if (!this.editor) {
       throw new Error(`Deactivated a tool (${this.name}) which was not attached to any editor`)
+    }
+    if (this.#shouldDisableMenu) {
+      this.editor.canvas.el.removeEventListener('contextmenu', this.#disableContextMenu)
     }
     this.active = false
     this.els.forEach(el => el.classList.remove('active-tool'))
@@ -66,6 +78,10 @@ class Tool {
     throw new Error('Called abstract method "deactivated" of the Tool')
   }
 
+  #disableContextMenu(e) {
+    e.preventDefault()
+    return false
+  }
 }
 
 export class Pencil extends Tool {
@@ -117,23 +133,16 @@ export class Pencil extends Tool {
     return new PencilCommand(color, [this.editor.mousePosition])
   }
 
-  disableContextMenu(e) {
-    e.preventDefault()
-    return false
-  }
-
   activated() {
     ['mousedown', 'mousemove', 'mouseup'].forEach(type =>
       this.editor.canvas.el.addEventListener(type, this.draw)
     )
-    this.editor.canvas.el.addEventListener('contextmenu', this.disableContextMenu)
   }
 
   deactivated() {
     ['mousedown', 'mousemove', 'mouseup'].forEach(type =>
       this.editor.canvas.el.removeEventListener(type, this.draw)
     )
-    this.editor.canvas.el.removeEventListener('contextmenu', this.disableContextMenu)
   }
 }
 
@@ -165,33 +174,78 @@ export class Bucket extends Tool {
     this.editor.recordCommand(command)
   }
 
-  disableContextMenu(e) {
-    e.preventDefault()
-    return false
-  }
-
   activated() {
     this.editor.canvas.el.addEventListener('mouseup', this.draw)
-    this.editor.canvas.el.addEventListener('contextmenu', this.disableContextMenu)
   }
 
   deactivated() {
     this.editor.canvas.el.removeEventListener('mouseup', this.draw)
-    this.editor.canvas.el.removeEventListener('contextmenu', this.disableContextMenu)
   }
 }
 
-export class Ellipsis extends Tool {
+class TwoPointPolygon extends Tool {
   constructor(elements) {
-    super('Bucket', 'regular-tools', elements, 'E')
+    super('Line', 'regular-tools', elements, 'L')
+    this.draw = this.draw.bind(this)
+  }
+
+  draw(e) {
+    // consider only left/right buttons
+    if (e.button !== 0 && e.button !== 2) {
+      return
+    }
+
+    switch (e.type) {
+      case 'mousedown':
+        if (this.activelyDrawing) {
+          return
+        }
+        this.savedCanvas = this.editor.canvas.save()
+        this.command = this.commandBuilder(e)
+        this.activelyDrawing = true
+        break
+
+      case 'mousemove':
+        if (this.activelyDrawing) {
+          const position = this.editor.mousePosition
+          this.editor.canvas.restore(this.savedCanvas)
+          this.command.updatePosition(position)
+          this.command.execute(this.editor)
+        }
+        break
+      case 'mouseup':
+        if (this.activelyDrawing) {
+          this.editor.canvas.restore(this.savedCanvas)
+          this.command.execute(this.editor)
+          this.editor.recordCommand(this.command)
+
+          this.activelyDrawing = false
+        }
+        break
+    }
   }
 
   activated() {
-
+    ['mousedown', 'mousemove', 'mouseup'].forEach(type =>
+      this.editor.canvas.el.addEventListener(type, this.draw)
+    )
   }
 
   deactivated() {
+    ['mousedown', 'mousemove', 'mouseup'].forEach(type =>
+      this.editor.canvas.el.removeEventListener(type, this.draw)
+    )
+  }
+}
 
+export class Line extends TwoPointPolygon {
+  commandBuilder(e) {
+    const primaryOrSecondary = e.button === 0 ? 'primary' : 'secondary'
+    return new LineCommand(
+      this.editor[primaryOrSecondary + 'Color'].get(),
+      this.editor.mousePosition,
+      this.editor.mousePosition
+    )
   }
 }
 
