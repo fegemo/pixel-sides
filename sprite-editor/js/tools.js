@@ -107,6 +107,7 @@ export class Pencil extends Tool {
         this.activelyDrawing = true
         break
 
+      case 'mouseout':
       case 'mouseup':
         if (this.activelyDrawing) {
           this.editor.canvas.restore(this.savedCanvas)
@@ -134,13 +135,13 @@ export class Pencil extends Tool {
   }
 
   activated() {
-    ['mousedown', 'mousemove', 'mouseup'].forEach(type =>
+    ['mousedown', 'mousemove', 'mouseup', 'mouseout'].forEach(type =>
       this.editor.canvas.el.addEventListener(type, this.draw)
     )
   }
 
   deactivated() {
-    ['mousedown', 'mousemove', 'mouseup'].forEach(type =>
+    ['mousedown', 'mousemove', 'mouseup', 'mouseout'].forEach(type =>
       this.editor.canvas.el.removeEventListener(type, this.draw)
     )
   }
