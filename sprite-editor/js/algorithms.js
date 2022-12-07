@@ -29,6 +29,7 @@ export function lineEFLA(setPixel, {x: x1, y: y1}, {x: x2, y: y2}) {
         for (i = 0; i !== ll; i += dlt)
             setPixel(x1 + i, (y1 + i * mul) | 0)
     }
+    setPixel(x2, y2)
 }
 
 export function manhattanDistance({x: x1, y: y1}, {x: x2, y: y2}) {
