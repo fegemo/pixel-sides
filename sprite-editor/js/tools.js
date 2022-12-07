@@ -1,4 +1,4 @@
-import { BucketCommand, EraserCommand, LineCommand, PencilCommand } from "./commands.js"
+import { BucketCommand, EraserCommand, LineCommand, RectangleCommand, PencilCommand } from "./commands.js"
 
 class Tool {
   #shouldDisableMenu
@@ -146,7 +146,6 @@ export class Pencil extends Tool {
   }
 }
 
-
 export class Eraser extends Pencil {
   #eraserColor = '#000F'
 
@@ -185,7 +184,7 @@ export class Bucket extends Tool {
 
 class TwoPointPolygon extends Tool {
   constructor(elements) {
-    super('Line', 'regular-tools', elements, 'L')
+    super('Two Point Polygon', 'regular-tools', elements)
     this.draw = this.draw.bind(this)
   }
 
@@ -239,9 +238,32 @@ class TwoPointPolygon extends Tool {
 }
 
 export class Line extends TwoPointPolygon {
+  constructor(elements) {
+    super(elements)
+    this.name = 'Line'
+    this.shortcut = 'L'
+  }
+
   commandBuilder(e) {
     const primaryOrSecondary = e.button === 0 ? 'primary' : 'secondary'
     return new LineCommand(
+      this.editor[primaryOrSecondary + 'Color'].get(),
+      this.editor.mousePosition,
+      this.editor.mousePosition
+    )
+  }
+}
+
+export class Rectangle extends TwoPointPolygon {
+  constructor(elements) {
+    super(elements)
+    this.name = 'Rectangle'
+    this.shortcut = 'R'
+  }
+
+  commandBuilder(e) {
+    const primaryOrSecondary = e.button === 0 ? 'primary' : 'secondary'
+    return new RectangleCommand(
       this.editor[primaryOrSecondary + 'Color'].get(),
       this.editor.mousePosition,
       this.editor.mousePosition

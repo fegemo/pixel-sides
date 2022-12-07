@@ -103,7 +103,7 @@ export class PenCommand extends Command {
   }
 }
 
-export class LineCommand extends Command {
+class TwoPointPolygonCommand extends Command {
   constructor(color, startPosition, endPosition) {
     super('line', { color, startPosition, endPosition })
   }
@@ -118,15 +118,32 @@ export class LineCommand extends Command {
   }
 
   execute(editor) {
+
+  }
+
+  updatePosition(position) {
+    this.params.endPosition = position
+  }
+}
+
+export class LineCommand extends TwoPointPolygonCommand {
+  execute(editor) {
     this.configure(editor)
     const startPosition = this.params.startPosition
     const endPosition = this.params.endPosition
     lineEFLA((x, y) => editor.canvas.ctx.fillRect(x, y, 1, 1), startPosition, endPosition)
     this.deconfigure(editor)
   }
+}
 
-  updatePosition(position) {
-    this.params.endPosition = position
+export class RectangleCommand extends TwoPointPolygonCommand {
+  execute(editor) {
+    this.configure(editor)
+    const startPosition = this.params.startPosition
+    const endPosition = this.params.endPosition
+    const ctx = editor.canvas.ctx
+    ctx.fillRect(startPosition.x, startPosition.y, endPosition.x - startPosition.x, endPosition.y - startPosition.y)
+    this.deconfigure(editor)
   }
 }
 
