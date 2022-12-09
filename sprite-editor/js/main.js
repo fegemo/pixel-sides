@@ -1,5 +1,6 @@
 import Canvas from './canvas.js'
 import { Pencil, Bucket, Eraser, Line, Rectangle, EyeDropper, ColorPicker } from './tools.js'
+import { MultiCanvasPlugin } from './plugins.js'
 import generators from './generators.js'
 import Observable from './observable.js'
 
@@ -8,15 +9,19 @@ class Editor extends EventTarget {
   #mousePosition
   #primaryColor = new Observable()
   #secondaryColor = new Observable()
+  #canvasSize = new Observable()
   #executedCommands = []
   #undoneCommands = []
+  #setupCommands = []
+  plugins = {}
   
   constructor(containerEl, canvasEl, tools, canvasSize) {
     super()
     this.containerEl = containerEl
-    this.canvas = new Canvas(canvasEl, this, canvasSize)
+    this.#canvasSize.set(canvasSize)
     this.tools = tools
-    this.canvasSize = canvasSize
+    this.canvas = new Canvas(canvasEl, this, this.#canvasSize)
+    this.#setupCommands = []
     this.#executedCommands = []
     this.#undoneCommands = []
 
@@ -45,6 +50,11 @@ class Editor extends EventTarget {
     }
   }
 
+  executeCommand(command) {
+    command.execute(this)
+    this.#notifyCanvasChange()
+  }
+
   recordCommand(command) {
     this.#executedCommands.push(command)
     this.#undoneCommands.length = 0
@@ -68,9 +78,18 @@ class Editor extends EventTarget {
 
   replayCommands() {
     this.canvas.clear()
-    for (let command of this.#executedCommands) {
-      command.execute(this)
-    }
+    this.#setupCommands.forEach(this.executeCommand.bind(this))
+    this.#executedCommands.forEach(this.executeCommand.bind(this))
+  }
+
+  addSetupCommand(command) {
+    this.#setupCommands.push(command)
+  }
+
+  #notifyCanvasChange() {
+    this.dispatchEvent(
+      new CustomEvent('canvaschange', { detail: { canvas: this.canvas }})
+      )
   }
   
   keyboardMultiplexer(e) {
@@ -92,6 +111,63 @@ class Editor extends EventTarget {
       toolsToConsider = toolsToConsider.filter(tool => tool.exclusionGroup === toolGroup)
     }
     return toolsToConsider.find(tool => tool.active)
+  }
+
+  register(plugin) {
+    const { name } = plugin
+    this.plugins[name] = plugin
+  }
+
+  async install() {
+    const pluginsInOrder = []
+
+    // check for plugin dependencies, adding them to a list in a proper order to be installed
+    for (let name of Object.keys(this.plugins)) {
+      const plugin = this.plugins[name]
+      let deps = plugin.dependencies
+      if (deps && !Array.isArray(deps)) {
+        deps = [deps]
+      }
+      
+      for (let dependencyName of deps) {
+        if (!(dependencyName in this.plugins)) {
+          throw new Error(`Plugin ${plugin.name} required ${dependencyName}, but it was not registered before installation`)
+        }
+      }
+
+      // inserts at the left, but it'll move to the right until all dependencies are to the left
+      pluginsInOrder.unshift(plugin)
+    }
+
+    // preinstall hook - can do it as all dependencies have been satisfied
+    for (let name of Object.keys(this.plugins)) {
+      this.plugins[name].preInstall(this)
+    }
+
+    // puts plugins in correct order for the install hook
+    for (let name of Object.keys(this.plugins)) {
+      // move to the right until all dependencies are to the left
+      const plugin = this.plugins[name]
+      const index = pluginsInOrder.indexOf(plugin)
+      let lastDependencyIndex = index
+      for (let dependencyName of plugin.dependencies) {
+        const dependencyIndex = pluginsInOrder.indexOf(this.plugins[dependencyName])
+        lastDependencyIndex = Math.max(lastDependencyIndex, dependencyIndex)
+      }
+
+      pluginsInOrder.splice(index, 1)
+      pluginsInOrder.splice(lastDependencyIndex, 0, plugin)
+      // TODO: in case of cycles this fails... should do topological sorting
+    }
+
+    for (let plugin of pluginsInOrder) {
+      await plugin.readyToInstall
+      await plugin.install(this)
+    }
+  }
+
+  get canvasSize() {
+    return this.#canvasSize
   }
 
   get zoom() {
@@ -160,4 +236,10 @@ const editor = new Editor(
   [64, 64]
   )
   
-  
+editor.register(new MultiCanvasPlugin(
+  ['front', 'right', 'back', 'left'],
+  ['front', 'right', 'back', 'left'],
+  document.querySelector('#colateral-section'),
+  'multi-canvas.css'))
+// editor.register(new Pix2PixPlugin(['front', 'right', 'back', 'left']))
+editor.install()

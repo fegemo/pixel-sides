@@ -111,7 +111,7 @@ export class Pencil extends Tool {
       case 'mouseup':
         if (this.activelyDrawing) {
           this.editor.canvas.restore(this.savedCanvas)
-          this.command.execute(this.editor)
+          this.editor.executeCommand(this.command)
           this.editor.recordCommand(this.command)
   
           this.activelyDrawing = false
@@ -170,7 +170,7 @@ export class Bucket extends Tool {
   draw(e) {
     const color = e.button === 0 ? this.editor.primaryColor.get() : this.editor.secondaryColor.get()
     const command = new BucketCommand(color, this.editor.mousePosition)
-    command.execute(this.editor)
+    this.editor.executeCommand(command)
     this.editor.recordCommand(command)
   }
 
@@ -210,13 +210,13 @@ class TwoPointPolygon extends Tool {
           const position = this.editor.mousePosition
           this.editor.canvas.restore(this.savedCanvas)
           this.command.updatePosition(position)
-          this.command.execute(this.editor)
+          this.editor.executeCommand(this.command)
         }
         break
       case 'mouseup':
         if (this.activelyDrawing) {
           this.editor.canvas.restore(this.savedCanvas)
-          this.command.execute(this.editor)
+          this.editor.executeCommand(this.command)
           this.editor.recordCommand(this.command)
 
           this.activelyDrawing = false
