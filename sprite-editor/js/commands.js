@@ -105,7 +105,7 @@ export class PenCommand extends Command {
 
 class TwoPointPolygonCommand extends Command {
   constructor(color, startPosition, endPosition) {
-    super('line', { color, startPosition, endPosition })
+    super('generic two line', { color, startPosition, endPosition })
   }
 
   configure(editor) {
@@ -127,6 +127,11 @@ class TwoPointPolygonCommand extends Command {
 }
 
 export class LineCommand extends TwoPointPolygonCommand {
+  constructor(color, start, end) {
+    super(color, start, end)
+    this.name = 'line'
+  }
+
   execute(editor) {
     this.configure(editor)
     const startPosition = this.params.startPosition
@@ -137,6 +142,11 @@ export class LineCommand extends TwoPointPolygonCommand {
 }
 
 export class RectangleCommand extends TwoPointPolygonCommand {
+  constructor(color, start, end) {
+    super(color, start, end)
+    this.name = 'rectangle'
+  }
+
   execute(editor) {
     this.configure(editor)
     const startPosition = this.params.startPosition
