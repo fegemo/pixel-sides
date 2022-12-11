@@ -88,14 +88,6 @@ export class MultiCanvasPlugin extends Plugin {
     editor.addSetupCommand(command)
     editor.executeCommand(command)
     this.canvases.forEach(canvas => editor.addSetupCommand(new MultiCanvasPlugin.ClearCanvasCommand(canvas)))
-
-    // monkeypatches the editor so when it replays commands, it clears all canvases
-    // (instead of only the main one)
-    const officialReplayCommands = editor.replayCommands
-    editor.replayCommands = () => {
-      this.canvases.forEach(canvas => canvas.clear())
-      officialReplayCommands.apply(editor)
-    }
   }
 
   #canvasClicked(e) {
