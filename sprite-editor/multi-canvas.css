@@ -30,7 +30,7 @@
   width: 0;
   height: 0;
   border-style: solid;
-  border-width: 12px 12px 0 0;
+  border-width: 20px 20px 0 0;
   border-color: var(--active-canvas-highlight) transparent transparent transparent;
 }
 
@@ -38,7 +38,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  border: 1px dashed var(--active-canvas-highlight);
+  border: 3px solid var(--active-canvas-highlight);
 }
 
 .canvas-label {
