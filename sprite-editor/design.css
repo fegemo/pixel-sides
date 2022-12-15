@@ -9,6 +9,7 @@
   --tool-button-bg-color: #fff3;
   --checker-color-1: #f1f1f1;
   --checker-color-2: #cccccc;
+  --active-tool-border-width: 3px;
 }
 
 body {
@@ -54,7 +55,7 @@ h1, h2, h3, h4, h5, h6 {
   display: block;
   position: absolute;
   inset: 0;
-  border: 3px solid var(--highlight-fg-color);
+  border: var(--active-tool-border-width) solid var(--highlight-fg-color);
 }
 
 #main-canvas {
@@ -65,4 +66,28 @@ h1, h2, h3, h4, h5, h6 {
 
 #mouse-stats {
   text-shadow: 1px 1px #000;
+}
+
+#pencil-tool {
+  background-image: url(img/pencil.png);
+}
+
+#eraser-tool {
+  background-image: url(img/eraser.png);
+}
+
+#bucket-tool {
+  background-image: url(img/bucket.png);
+}
+
+#line-tool {
+  background-image: url(img/line.png);
+}
+
+#rectangle-tool {
+  background-image: url(img/rectangle.png);
+}
+
+#eye-dropper-tool {
+  background-image: url(img/eye-dropper.png);
 }
