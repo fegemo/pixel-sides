@@ -28,6 +28,7 @@ class Tool {
           this.activate()
         }
       })
+      this.els.forEach(el => el.dataset.shortcut = this.shortcut)
     }
   }
 

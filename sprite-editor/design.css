@@ -68,6 +68,34 @@ h1, h2, h3, h4, h5, h6 {
   text-shadow: 1px 1px #000;
 }
 
+.tool-list>li {
+  text-indent: -1000em;
+  background-size: contain;
+  position: relative;
+}
+
+#tools>li::after {
+  content: attr(data-shortcut);
+  display: block;
+  font-size: 8px;
+  color: white;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 1em;
+  height: 1em;
+  z-index: 100;
+  text-indent: initial;
+  background-color: #0000004f;
+  text-align: center;
+  text-transform: uppercase;
+  overflow: hidden;
+}
+
+#tools>li.active-tool::after {
+  transform: translate(calc(-1 * var(--active-tool-border-width)), calc(-1 * var(--active-tool-border-width)));
+}
+
 #pencil-tool {
   background-image: url(img/pencil.png);
 }
