@@ -44,11 +44,12 @@ class Plugin {
 
 export class MultiCanvasPlugin extends Plugin {
   #editor
+  #el
   #containerEl
   #activeCanvas = new Observable()
 
   constructor(canvasIds, labels, el, cssPath) {
-    super('multi-canvas', [], cssPath)
+    super('multi-canvas-plugin', [], cssPath)
     this.#containerEl = el
     this.canvases = []
     
@@ -60,13 +61,15 @@ export class MultiCanvasPlugin extends Plugin {
   }
 
   #createDom(editor) {
-    this.#containerEl.innerHTML = ''
     this.#containerEl.style.setProperty('--multi-canvas-length', this.canvases.length)
+
+    this.#el = document.createRange().createContextualFragment(`<div id="multi-canvas-container"></div>`).firstElementChild
+    this.#containerEl.appendChild(this.#el)
 
     for (let canvas of this.canvases) {
       const index = this.canvases.indexOf(canvas)
       const canvasEl = canvas.createDom(index, editor.canvasSize)
-      this.#containerEl.appendChild(canvasEl)
+      this.#el.appendChild(canvasEl)
     }
   }
 
@@ -128,30 +131,37 @@ export class MultiCanvasPlugin extends Plugin {
       #containerEl
       #canvasEl
       #ctx
+      #prefix
+      #canvasSize
 
-      constructor(id, name) {
+      constructor(id, name, prefix='multi-canvas') {
         this.#id = id
         this.#name = name
+        this.#prefix = prefix
+        this.updateSize = this.updateSize.bind(this)
       }
 
       createDom(index, canvasSize) {
+        this.#canvasSize = canvasSize
         const size = canvasSize.get()
         const template = `
-          <div class="multi-canvas-container">
-            <span class="canvas-label">${this.name}</span>
-            <canvas id="multi-canvas-${this.id}" class="multi-canvas-${index + 1} other-canvas checkerboard-background" width="${size[0]}" height="${size[1]}"></canvas>
+          <div class="${this.#prefix}-container">
+            ${this.name ? '<span class="canvas-label">' + this.name + '</span>' : ''}
+            <canvas id="${this.#prefix}-${this.id}" class="${this.#prefix}-${index + 1} other-canvas checkerboard-background" width="${size[0]}" height="${size[1]}"></canvas>
           </div>
         `
         this.#containerEl = document.createRange().createContextualFragment(template).firstElementChild
         this.#canvasEl = this.#containerEl.querySelector('canvas')
         this.#ctx = this.#canvasEl.getContext('2d')
 
-        canvasSize.addListener(size => {
-          this.#canvasEl.width = size[0]
-          this.#canvasEl.height = size[1]
-        })
+        canvasSize.addListener(this.updateSize)
 
         return this.#containerEl
+      }
+
+      updateSize(size) {
+        this.#canvasEl.width = size[0]
+        this.#canvasEl.height = size[1]
       }
 
       clear() {
@@ -169,6 +179,11 @@ export class MultiCanvasPlugin extends Plugin {
       
       deactivate() {
         this.#containerEl.classList.remove('active-canvas')
+      }
+
+      remove() {
+        this.#canvasSize.addListener(this.updateSize)
+        this.#containerEl.remove()
       }
 
       get el() {
@@ -209,6 +224,127 @@ export class MultiCanvasPlugin extends Plugin {
 
       execute(editor) {
         this.params.canvas.clear()
+      }
+    }
+  }
+}
+
+export class Pix2PixPlugin extends Plugin {
+  #canvasIds
+  #previewEl
+  #containerEl
+  #views
+  #canvases
+  #numberOfSuggestions
+
+  constructor(canvasIds, el, numberOfSuggestions, cssPath) {
+    super('pix2pix-plugin', ['multi-canvas-plugin'], cssPath)
+    this.#canvasIds = canvasIds
+    this.#containerEl = el
+    this.#numberOfSuggestions = new Observable(numberOfSuggestions)
+  }
+
+  updateNumberOfSuggestions(number) {
+    this.#previewEl.style.setProperty('--ai-number-of-suggestions', number)
+  }
+
+  #createDom(editor) {
+    // creates the ai colateral bar (to the left of the multi-canvas)
+    this.#previewEl = document.createRange().createContextualFragment(`<div id="ai-section"></div>`).firstElementChild
+    this.#containerEl.appendChild(this.#previewEl)
+
+    // creates views for each multi-canvas canvas
+    // a view represents a domain (e.g., front, right, left or back), its elements (canvas etc.), and the
+    // suggestion(s) from the model
+    this.#views = this.#canvases.map(canvas => new Pix2PixPlugin.View(canvas, new Pix2PixPlugin.ProgressBar(canvas.name, 0), this.#previewEl, this.#numberOfSuggestions))
+    this.#views.forEach(view => view.createDom(editor))
+  }
+
+  install(editor) {
+    // connect to the canvases of the multi-canvas-plugin
+    // TODO: fazer algo sobre "conectar" os canvasIds recebidos? Apenas uma validação? Nem isso?
+    this.#canvases = editor.plugins['multi-canvas-plugin'].canvases
+    this.#createDom(editor)
+    this.#numberOfSuggestions.addListener(this.updateNumberOfSuggestions.bind(this))
+    this.updateNumberOfSuggestions(this.#numberOfSuggestions.get())
+  }
+
+  static get View() {
+    return class View {
+      #numberOfSuggestions
+      #editor
+      #containerEl
+      #multiPreviewEl
+
+      constructor(canvas, progressBar, containerEl, numberOfSuggestions) {
+        this.canvas = canvas
+        this.progressBar = progressBar
+        this.#containerEl = containerEl
+        this.#numberOfSuggestions = numberOfSuggestions
+        this.suggestionCanvases = []
+      }
+      
+      createDom(editor) {
+        this.#editor = editor
+
+        const template = `<div class="ai-preview-multi-container"></div>`
+        this.#multiPreviewEl = document.createRange().createContextualFragment(template).firstElementChild
+        this.#containerEl.appendChild(this.#multiPreviewEl)
+
+        // creates 1 canvas per suggestion
+        this.#numberOfSuggestions.addListener(this.#createSuggestionCanvases.bind(this))
+        this.#createSuggestionCanvases(this.#numberOfSuggestions.get(), 0)
+        
+        // progress bar
+        const pgbEl = this.progressBar.createDom()
+        this.canvas.el.insertAdjacentElement('afterend', pgbEl)
+      }
+      
+      #createSuggestionCanvases(number, previous) {
+        const toCreate = number - previous
+        
+        if (toCreate > 0) {
+          for (let c = 0; c < toCreate; c++) {
+            this.suggestionCanvases.push(new MultiCanvasPlugin.Canvas('suggestion-' + c, null, 'ai-preview'))
+          }
+          this.suggestionCanvases.forEach((sc, c) => {
+            this.#multiPreviewEl.appendChild(
+              sc.createDom(c, this.#editor.canvasSize)
+            )
+          })
+        } else if (toCreate < 0) {
+          const indexFromWhichToRemove = this.suggestionCanvases.length + toCreate
+          const deleted = this.suggestionCanvases.splice(indexFromWhichToRemove, -1*toCreate)
+          deleted.forEach(del => del.remove())
+        }
+      }
+    }
+  }
+
+  static get ProgressBar() {
+    return class ProgressBar {
+      #name
+      #value
+      #el
+
+      constructor(name, value = 0) {
+        this.#name = name
+        this.#value = value
+      }
+
+      createDom() {
+        const template = `<div class="ai-progress-bar vertical" aria-role="progressbar" aria-label="Progress of ${this.#name}"></div>`
+        this.#el = document.createRange().createContextualFragment(template).firstElementChild
+        return this.#el
+      }
+
+      get value() {
+        return this.#value
+      }
+
+      set value(percentage) {
+        this.#value = percentage
+        this.#el.style.setProperty('--progress-bar-value', Math.min(1, Math.max(0, this.#value)))
       }
     }
   }

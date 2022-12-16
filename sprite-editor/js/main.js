@@ -1,6 +1,6 @@
 import Canvas from './canvas.js'
 import { Pencil, Bucket, Eraser, Line, Rectangle, EyeDropper, ColorPicker } from './tools.js'
-import { MultiCanvasPlugin } from './plugins.js'
+import { MultiCanvasPlugin, Pix2PixPlugin } from './plugins.js'
 import generators from './generators.js'
 import Observable from './observable.js'
 
@@ -241,5 +241,9 @@ editor.register(new MultiCanvasPlugin(
   ['front', 'right', 'back', 'left'],
   document.querySelector('#colateral-section'),
   'multi-canvas.css'))
-// editor.register(new Pix2PixPlugin(['front', 'right', 'back', 'left']))
+editor.register(new Pix2PixPlugin(
+  ['front', 'right', 'back', 'left'],
+  document.querySelector('#colateral-section'),
+  1,
+  'ai.css'))
 editor.install()
