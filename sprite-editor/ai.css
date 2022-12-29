@@ -27,7 +27,6 @@
 
 .ai-preview-container {
   height: var(--ai-preview-size);
-  /* height: calc(var(--ai-preview-size) - 20px); */
   aspect-ratio: 1 / 1;
 }
 
@@ -39,7 +38,6 @@
   position: absolute;
   inset: 0 0 0 calc(-1 * var(--progress-bar-thickness));
   background-color: var(--progress-bar-bgcolor);
-  transition: opacity 200ms ease-out;
 }
 
 .ai-progress-bar.horizontal {
@@ -50,6 +48,10 @@
 .ai-progress-bar.vertical {
   height: var(--progress-bar-length);
   width: var(--progress-bar-thickness);
+}
+
+.ai-progress-bar.hidden {
+  opacity: 0;
 }
 
 .ai-progress-bar::before {
@@ -64,7 +66,6 @@
   inset: 1px 0;
   transform: scaleX(var(--progress-bar-value, 0));
   transform-origin: left center;
-  transition: all 200ms ease-out;
 }
 
 .ai-progress-bar.vertical::before {
@@ -72,5 +73,8 @@
   inset: 0 1px;
   transform: scaleY(var(--progress-bar-value, 0));
   transform-origin: top center;
+}
+
+.ai-progress-bar.transition::before {
   transition: all 200ms ease-out;
 }
