@@ -10,64 +10,65 @@ export const DOMAINS = {
 
 export const config = {
   pix2pix: {
+    inputs: ['sourceImage'],
     checkpoints: [
       {
-        file: '/models/pix2pix/front2left/model.json',
+        file: '/models/pix2pix/front-to-left/model.json',
         source: DOMAINS.front,
         target: DOMAINS.left
       },
       {
-        file: '/models/pix2pix/front2back/model.json',
+        file: '/models/pix2pix/front-to-back/model.json',
         source: DOMAINS.front,
         target: DOMAINS.back
       },
       {
-        file: '/models/pix2pix/front2right/model.json',
+        file: '/models/pix2pix/front-to-right/model.json',
         source: DOMAINS.front,
         target: DOMAINS.right
       },
       {
-        file: '/models/pix2pix/back2left/model.json',
+        file: '/models/pix2pix/back-to-left/model.json',
         source: DOMAINS.back,
         target: DOMAINS.left
       },
       {
-        file: '/models/pix2pix/back2front/model.json',
+        file: '/models/pix2pix/back-to-front/model.json',
         source: DOMAINS.back,
         target: DOMAINS.front
       },
       {
-        file: '/models/pix2pix/back2right/model.json',
+        file: '/models/pix2pix/back-to-right/model.json',
         source: DOMAINS.back,
         target: DOMAINS.right
       },
       {
-        file: '/models/pix2pix/right2left/model.json',
+        file: '/models/pix2pix/right-to-left/model.json',
         source: DOMAINS.right,
         target: DOMAINS.left
       },
       {
-        file: '/models/pix2pix/right2front/model.json',
+        file: '/models/pix2pix/right-to-front/model.json',
         source: DOMAINS.right,
         target: DOMAINS.front
       },
       {
-        file: '/models/pix2pix/right2back/model.json',
+        file: '/models/pix2pix/right-to-back/model.json',
         source: DOMAINS.right,
         target: DOMAINS.back
       },
       {
-        file: '/models/pix2pix/left2right/model.json',
+        file: '/models/pix2pix/left-to-right/model.json',
         source: DOMAINS.left,
         target: DOMAINS.right
       },
       {
-        file: '/models/pix2pix/left2front/model.json',
+        file: '/models/pix2pix/left-to-front/model.json',
         source: DOMAINS.left,
         target: DOMAINS.front
       },
       {
-        file: '/models/pix2pix/left2back/model.json',
+        file: '/models/pix2pix/left-to-back/model.json',
         source: DOMAINS.left,
         target: DOMAINS.back
       },
@@ -75,6 +76,7 @@ export const config = {
     endpoint: '/api/pix2pix/{source}/2/{target}'
   },
   stargan: {
+    inputs: ['sourceImage', 'targetDomain'],
     checkpoints: [
       {
         file: '/models/stargan/model.json',

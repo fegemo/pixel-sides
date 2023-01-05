@@ -241,7 +241,7 @@ editor.register(new MultiCanvasPlugin(
   document.querySelector('#colateral-section'),
   'multi-canvas.css'))
 editor.register(new DomainTransferPlugin(
-  'pix2pix',
+  'stargan',
   ['front', 'right', 'back', 'left'],
   document.querySelector('#colateral-section'),
   4,

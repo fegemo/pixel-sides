@@ -316,7 +316,7 @@ export class DomainTransferPlugin extends Plugin {
 
       const numberOfSuggestions = this.#numberOfSuggestions.get()
       const generator = this.model.selectGenerator(sourceDomain, targetDomain)
-      const tasks = Array.from(range(numberOfSuggestions)).map(() => generator.createGenerationTask())
+      const tasks = Array.from(range(numberOfSuggestions)).map(() => generator.createGenerationTask(sourceDomain, targetDomain))
       view.progressBar.watchProgress(tasks.map(t => t.progress))
 
       for (let s of range(numberOfSuggestions)) {
@@ -421,7 +421,7 @@ export class DomainTransferPlugin extends Plugin {
           if (this.value >= 1) {
             this.#computedProgress.removeListener(updateAndStop)
           }
-        }).bind(this)
+        })
 
         // start watching
         this.#computedProgress = new ComputedProgressObservable(observableProgresses)

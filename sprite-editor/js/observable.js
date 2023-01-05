@@ -17,8 +17,11 @@ export class Observable {
     
     const previousValue = this.#value
     this.#value = updated
-    for (let listener of this.listeners) {
-      listener(updated, previousValue, this)
+
+    // need to use vanilla for in reverse because some listener might reduce the
+    // listeners array size (such as with the computed progress observable)
+    for (let c = this.listeners.length - 1; c >= 0; c--) {
+      this.listeners[c](updated, previousValue, this)
     }
   }
   
