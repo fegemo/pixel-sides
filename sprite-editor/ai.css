@@ -28,6 +28,7 @@
 .ai-preview-container {
   height: var(--ai-preview-size);
   aspect-ratio: 1 / 1;
+  position: relative;
 }
 
 .ai-progress-bar {

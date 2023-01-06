@@ -1,5 +1,4 @@
 import { Plugin } from './plugin.js'
-import { MultiCanvasPlugin } from './multi-canvas.js'
 import { selectModel } from '../generators/model.js'
 import { DOMAINS } from '../generators/config.js'
 import { Observable, ComputedProgressObservable } from '../observable.js'
@@ -111,7 +110,7 @@ export class DomainTransferPlugin extends Plugin {
         // TODO: (temporary?) "generate" button
         const template = `
           <div class="ai-preview-multi-container">
-          <button class="ai-generate">Generate</button>
+            <button class="ai-generate">Generate</button>
           </div>`
         this.#multiPreviewEl = document.createRange().createContextualFragment(template).firstElementChild
         this.#containerEl.appendChild(this.#multiPreviewEl)
@@ -130,7 +129,7 @@ export class DomainTransferPlugin extends Plugin {
 
         if (toCreate > 0) {
           for (let c = 0; c < toCreate; c++) {
-            this.suggestionCanvases.push(new MultiCanvasPlugin.Canvas('suggestion-' + c, null, 'ai-preview'))
+            this.suggestionCanvases.push(this.#editor.plugins['multi-canvas-plugin'].requestAsideCanvas(`${this.domain}-suggestion-${c+1}`, 'ai-preview'))
           }
           this.suggestionCanvases.forEach((sc, c) => {
             this.#multiPreviewEl.insertBefore(

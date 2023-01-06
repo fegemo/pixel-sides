@@ -7,6 +7,8 @@ export class MultiCanvasPlugin extends Plugin {
   #el
   #containerEl
   #activeCanvas = new Observable()
+  static individualCanvasClass = 'other-canvas'
+  static canvasContainerClass = 'js-canvas-container'
 
   constructor(canvasIds, labels, el, cssPath) {
     super('multi-canvas-plugin', [], cssPath)
@@ -53,17 +55,23 @@ export class MultiCanvasPlugin extends Plugin {
     this.canvases.forEach(canvas => editor.addSetupCommand(new MultiCanvasPlugin.ClearCanvasCommand(canvas)))
   }
 
+  requestAsideCanvas(id, prefix) {
+    const newCanvas = new MultiCanvasPlugin.Canvas(id, '', prefix)
+    this.canvases.push(newCanvas)
+    return newCanvas
+  }
+  
   #canvasClicked(e) {
-    const clickedContainerEl = e.target.closest('.multi-canvas-container')
-    if (!clickedContainerEl) {
-      return
-    }
-    const clickedCanvasId = clickedContainerEl.querySelector('canvas').id
-    const clickedCanvas = this.canvases.find(canvas => clickedCanvasId.endsWith(canvas.id))
+    let canvasEl = e.target.closest('.' + MultiCanvasPlugin.individualCanvasClass) || 
+      e.target.closest('.' + MultiCanvasPlugin.canvasContainerClass)?.querySelector('.' + MultiCanvasPlugin.individualCanvasClass)
+    if (!canvasEl) return
+    const canvas = this.canvases.find(canvas => canvas.elementId === canvasEl.id)
 
+
+    // this._changeCanvas(clickedCanvas)
     // creates a command so it gets recorded to the history
     // and ctrl+z properly knows on which canvas to undo
-    const command = new MultiCanvasPlugin.CanvasChangeCommand(this, clickedCanvas)
+    const command = new MultiCanvasPlugin.CanvasChangeCommand(this, canvas)
     this.#editor.executeCommand(command)
     this.#editor.recordCommand(command)
   }
@@ -109,9 +117,9 @@ export class MultiCanvasPlugin extends Plugin {
         this.#canvasSize = canvasSize
         const size = canvasSize.get()
         const template = `
-          <div class="${this.#prefix}-container">
-          ${this.name ? '<span class="canvas-label">' + this.name + '</span>' : ''}
-          <canvas id="${this.#prefix}-${this.id}" class="${this.#prefix}-${index + 1} other-canvas checkerboard-background" width="${size[0]}" height="${size[1]}"></canvas>
+          <div class="${MultiCanvasPlugin.canvasContainerClass} ${this.#prefix}-container">
+            ${this.name ? '<span class="canvas-label">' + this.name + '</span>' : ''}
+            <canvas id="${this.elementId}" class="${this.#prefix}-${index + 1} other-canvas checkerboard-background" width="${size[0]}" height="${size[1]}"></canvas>
           </div>
           `
         this.#containerEl = document.createRange().createContextualFragment(template).firstElementChild
@@ -121,6 +129,10 @@ export class MultiCanvasPlugin extends Plugin {
         canvasSize.addListener(this.updateSize)
 
         return this.#containerEl
+      }
+
+      get elementId() {
+        return this.#prefix + '-' + this.id
       }
 
       updateSize(size) {
