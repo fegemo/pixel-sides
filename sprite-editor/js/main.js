@@ -1,6 +1,7 @@
 import Canvas from './canvas.js'
 import { Pencil, Bucket, Eraser, Line, Rectangle, EyeDropper, ColorPicker } from './tools.js'
-import { MultiCanvasPlugin, DomainTransferPlugin } from './plugins.js'
+import { MultiCanvasPlugin } from './plugins/multi-canvas.js'
+import { DomainTransferPlugin } from './plugins/domain-transfer.js'
 import { Observable } from './observable.js'
 
 class Editor extends EventTarget {
@@ -13,7 +14,7 @@ class Editor extends EventTarget {
   #undoneCommands = []
   #setupCommands = []
   plugins = {}
-  
+
   constructor(containerEl, canvasEl, tools, canvasSize) {
     super()
     this.containerEl = containerEl
@@ -31,12 +32,12 @@ class Editor extends EventTarget {
       yEl: containerEl.querySelector('#mouse-stats #y-mouse'),
       zoomEl: containerEl.querySelector('#mouse-stats #zoom')
     }
-    
+
     this.zoom = 1
 
     this.containerEl.ownerDocument.defaultView.addEventListener('keydown', this.keyboardMultiplexer.bind(this))
   }
-  
+
   updateMouseStats(info) {
     if (info.x !== undefined) {
       this.mouseStatsElements.xEl.innerHTML = info.x
@@ -87,10 +88,10 @@ class Editor extends EventTarget {
 
   #notifyCanvasChange() {
     this.dispatchEvent(
-      new CustomEvent('canvaschange', { detail: { canvas: this.canvas }})
-      )
+      new CustomEvent('canvaschange', { detail: { canvas: this.canvas } })
+    )
   }
-  
+
   keyboardMultiplexer(e) {
     // Ctrl+z
     if (e.type === 'keydown' && e.ctrlKey && e.key === 'z') {
@@ -127,7 +128,7 @@ class Editor extends EventTarget {
       if (deps && !Array.isArray(deps)) {
         deps = [deps]
       }
-      
+
       for (let dependencyName of deps) {
         if (!(dependencyName in this.plugins)) {
           throw new Error(`Plugin ${plugin.name} required ${dependencyName}, but it was not registered before installation`)
@@ -172,38 +173,38 @@ class Editor extends EventTarget {
   get zoom() {
     return this.#zoom
   }
-  
+
   set zoom(value) {
     this.#zoom = value
     this.canvas.el.style.transform = `scale(${value})`
     this.updateMouseStats({ zoom: value.toFixed(2) })
   }
-  
+
   get mousePosition() {
     return this.#mousePosition
   }
-  
+
   set mousePosition(pos) {
     this.#mousePosition = pos
     this.updateMouseStats(pos)
   }
-  
+
   get primaryColor() {
     return this.#primaryColor
   }
-  
+
   set primaryColor(value) {
     this.#primaryColor.set(value)
   }
-  
+
   get primaryColorAsInt() {
     return Editor.hexToRGB(this.#primaryColor.get())
   }
-  
+
   get secondaryColor() {
     return this.#secondaryColor
   }
-  
+
   set secondaryColor(value) {
     this.#secondaryColor.set(value)
   }
@@ -233,8 +234,8 @@ const editor = new Editor(
     new ColorPicker('Secondary Color', document.querySelectorAll('#secondary-color'), '#ffffff'),
   ],
   [64, 64]
-  )
-  
+)
+
 editor.register(new MultiCanvasPlugin(
   ['front', 'right', 'back', 'left'],
   ['front', 'right', 'back', 'left'],
