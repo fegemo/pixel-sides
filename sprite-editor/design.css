@@ -1,6 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Abel&family=Share+Tech+Mono&display=swap');
 :root {
   --highlight-fg-color: cornflowerblue;
+  --highlight-fg-color-dark: #01215d;
   --primary-text-color: whitesmoke;
   --primary-bg-color: #333;
   --secondary-bg-color: #666;

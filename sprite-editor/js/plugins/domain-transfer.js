@@ -48,6 +48,12 @@ export class DomainTransferPlugin extends Plugin {
 
     // allow dragging multi-canvas views to the suggestions to ask for image generation:
     // dragged view: source domain // which dropzone means the target domain
+    this.#containerEl.querySelectorAll('.multi-canvas-container').forEach(el => {
+      const dropzoneEl = document.createElement('div')
+      dropzoneEl.classList.add('ai-dropzone')
+      dropzoneEl.dataset.dropActionLabel = 'Copy image here'
+      el.appendChild(dropzoneEl)
+    })
     interact('.multi-canvas-container .other-canvas')
       .draggable({
         manualStart: true,
@@ -92,10 +98,10 @@ export class DomainTransferPlugin extends Plugin {
           clone.classList.add('ai-dragging')
           clone.style.width = original.offsetWidth + 'px'
           clone.style.height = original.offsetHeight + 'px'
-          let shiftX = e.offsetX//e.pageX - original.getBoundingClientRect().left
-          let shiftY = e.offsetY//e.pageY - original.getBoundingClientRect().top
-          clone.style.left = (-original.offsetWidth / 2 + shiftX)+ 'px'// shiftX + 'px'
-          clone.style.top = (-original.offsetHeight / 2 + shiftY)+ 'px'//shiftY + 'px'
+          let shiftX = e.offsetX
+          let shiftY = e.offsetY
+          clone.style.left = (-original.offsetWidth / 2 + shiftX)+ 'px'
+          clone.style.top = (-original.offsetHeight / 2 + shiftY)+ 'px'
 
           clone.style.transformOrigin = 'center center'
           if (original instanceof HTMLCanvasElement) {
@@ -108,13 +114,14 @@ export class DomainTransferPlugin extends Plugin {
           e.interaction.start({ name: 'drag' }, e.interactable, clone)
         }
       })
+    interact('.multi-canvas-container .ai-dropzone')
       .dropzone({
         accept: '.ai-preview-multi-container .other-canvas',
         ondrop: (e) => {
-          const target = this.#canvases.find(canvas => canvas.elementId === e.target.id)
+          const target = this.#canvases.find(canvas => canvas.elementId === e.target.closest('.multi-canvas-container').querySelector('.other-canvas').id)
           const sourceCanvasEl = e.relatedTarget
           const loadImageCommand = new LoadImageCommand(sourceCanvasEl, target)
-
+          
           editor.executeCommand(loadImageCommand)
           editor.recordCommand(loadImageCommand)
           
@@ -223,13 +230,16 @@ export class DomainTransferPlugin extends Plugin {
       createDom(editor, plugin) {
         this.#editor = editor
 
-        const template = `<div class="ai-preview-multi-container ai-dropzone"></div>`
+        const template = `<div class="ai-preview-multi-container"></div>`
         this.#multiPreviewEl = document.createRange().createContextualFragment(template).firstElementChild
         this.#containerEl.appendChild(this.#multiPreviewEl)
 
         // set up each suggestion area as a dropzone
         // the dropzone has a target domain and the dragged element represents the source
-        interact(this.#multiPreviewEl).dropzone({
+        const dropzoneEl = document.createElement('div')
+        dropzoneEl.classList.add('ai-dropzone')
+        this.#multiPreviewEl.appendChild(dropzoneEl)
+        interact(dropzoneEl).dropzone({
           accept: '.multi-canvas-container .other-canvas',
           ondrop: (e) => {
             const source = plugin.#canvases.find(canvas => canvas.elementId === e.relatedTarget.id)
@@ -239,8 +249,12 @@ export class DomainTransferPlugin extends Plugin {
             e.target.classList.remove('ai-droppable')
             e.target.classList.remove('ai-dragged-hover')
           },
-          ondropactivate(e) {
+          ondropactivate: (e) => {
             e.target.classList.add('ai-droppable')
+
+            const source = plugin.#canvases.find(canvas => canvas.elementId === e.relatedTarget.id)
+            const target = this.canvas
+            e.target.dataset.dropActionLabel = `Generate ${target.name} from ${source.name}`
           },
           ondropdeactivate(e) {
             e.target.classList.remove('ai-droppable')

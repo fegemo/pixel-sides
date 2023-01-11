@@ -19,6 +19,7 @@
   justify-content: center;
   align-content: flex-start;
   gap: var(--gap);
+  position: relative;
 }
 
 .ai-preview-multi-container:not(:first-of-type, :last-of-type) {
@@ -102,9 +103,16 @@
 }
 
 .ai-dropzone {
-  position: relative;
   --dash-length: 15px;
   --dash-width: 2px;
+  --dropzone-border-color: var(--highlight-fg-color);
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
 }
 
 .ai-dropzone::before {
@@ -112,10 +120,10 @@
   position: absolute;
   z-index: 2;
   inset: 0;
-  background-image: linear-gradient(90deg, var(--highlight-fg-color) 50%, transparent 50%),
-    linear-gradient(90deg, var(--highlight-fg-color) 50%, transparent 50%),
-    linear-gradient(0deg, var(--highlight-fg-color) 50%, transparent 50%),
-    linear-gradient(0deg, var(--highlight-fg-color) 50%, transparent 50%);
+  background-image: linear-gradient(90deg, var(--dropzone-border-color) 50%, transparent 50%),
+    linear-gradient(90deg, var(--dropzone-border-color) 50%, transparent 50%),
+    linear-gradient(0deg, var(--dropzone-border-color) 50%, transparent 50%),
+    linear-gradient(0deg, var(--dropzone-border-color) 50%, transparent 50%);
   background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
   background-size: var(--dash-length) var(--dash-width),
     var(--dash-length) var(--dash-width),
@@ -139,6 +147,30 @@
   animation-play-state: running;
   animation-duration: 300ms;
   opacity: 1;
+}
+
+.multi-canvas-container .ai-dropzone {
+  --dropzone-border-color: var(--highlight-fg-color-dark);
+}
+
+.ai-dropzone.ai-droppable::after {
+  content: attr(data-drop-action-label);
+  position: absolute;
+  z-index: 1;
+  color: black;
+  background-color: #fffa;
+  width: calc(100% - 2 * var(--dash-width));
+  text-align: center;
+  opacity: 0.8;
+  transition: opacity 200ms ease-out;
+}
+
+.ai-dropzone.ai-droppable.ai-dragged-hover::after {
+  opacity: 1;
+}
+
+.ai-preview-container.ai-dropzone.ai-droppable {
+  align-self: flex-end;
 }
 
 @keyframes dashing-border {
