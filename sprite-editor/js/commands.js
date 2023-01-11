@@ -1,9 +1,10 @@
 import { lineEFLA, equalPosition, floodFill } from './algorithms.js'
 
 export class Command {
-  constructor(name, params) {
+  constructor(name, params, taintsCanvas = true) {
     this.name = name
     this.params = params
+    this.taintsCanvas = taintsCanvas
   }
 
   execute(editor) {

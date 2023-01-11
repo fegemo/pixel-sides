@@ -12,6 +12,10 @@
   --active-tool-border-width: 3px;
 }
 
+* {
+  user-select: none;
+}
+
 body {
   background-color: var(--primary-bg-color);
   font-family: var(--sans-font);

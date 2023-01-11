@@ -79,3 +79,73 @@
 .ai-progress-bar.transition::before {
   transition: all 200ms ease-out;
 }
+
+.ai-dragging {
+  position: absolute;
+  z-index: 10;
+  transition-property: scale, left, top;
+  transition-duration: 200ms;
+  transition-timing-function: ease-out;
+  pointer-events: none;
+}
+
+.ai-dropped-on-dropzone {
+  transition-property: translate, scale, opacity, left, top;
+  transition-duration: 200ms;
+  transition-timing-function: ease-out;
+}
+
+.ai-dropped-out-of-zone {
+  transition-property: translate, scale, opacity, left, top;
+  transition-duration: 200ms;
+  transition-timing-function: ease-in;
+}
+
+.ai-dropzone {
+  position: relative;
+  --dash-length: 15px;
+  --dash-width: 2px;
+}
+
+.ai-dropzone::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  background-image: linear-gradient(90deg, var(--highlight-fg-color) 50%, transparent 50%),
+    linear-gradient(90deg, var(--highlight-fg-color) 50%, transparent 50%),
+    linear-gradient(0deg, var(--highlight-fg-color) 50%, transparent 50%),
+    linear-gradient(0deg, var(--highlight-fg-color) 50%, transparent 50%);
+  background-repeat: repeat-x, repeat-x, repeat-y, repeat-y;
+  background-size: var(--dash-length) var(--dash-width),
+    var(--dash-length) var(--dash-width),
+    var(--dash-width) var(--dash-length),
+    var(--dash-width) var(--dash-length);
+  background-position: left top, right bottom, left bottom, right top;
+  animation: dashing-border 400ms linear infinite;
+  animation-play-state: paused;
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+  pointer-events: none;
+}
+
+.ai-dropzone.ai-droppable::before {
+  animation-play-state: running;
+  animation-duration: 600ms;
+  opacity: 0.4;
+}
+
+.ai-dropzone.ai-dragged-hover::before {
+  animation-play-state: running;
+  animation-duration: 300ms;
+  opacity: 1;
+}
+
+@keyframes dashing-border {
+  from {
+    background-position: left top, right bottom, left bottom, right top;
+  }
+  to {
+    background-position: left var(--dash-length) top, right var(--dash-length) bottom, left bottom var(--dash-length), right top var(--dash-length);
+  }
+}

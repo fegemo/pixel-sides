@@ -19,8 +19,6 @@ export default class Canvas {
       offsetY = Math.floor((e.clientY - rect.top) / this.editor.zoom);
 
     this.editor.mousePosition = {
-      // x: e.offsetX,
-      // y: e.offsetY
       x: offsetX,
       y: offsetY
     }

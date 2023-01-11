@@ -52,7 +52,10 @@ class Editor extends EventTarget {
 
   executeCommand(command) {
     command.execute(this)
-    this.#notifyCanvasChange()
+    const taintsMainCanvas = command.taintsCanvas
+    if (taintsMainCanvas) {
+      this.#notifyCanvasChange()
+    }
   }
 
   recordCommand(command) {

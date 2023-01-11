@@ -8,6 +8,10 @@
   overflow-x: hidden;
 }
 
+#multi-canvas-container {
+  position: relative;
+}
+
 .multi-canvas-container {
   aspect-ratio: 1 / 1;
   height: var(--other-canvas-size);
@@ -21,6 +25,7 @@
 .other-canvas {
   aspect-ratio: 1 / 1;
   height: 100%;
+  touch-action: none;
 }
 
 .active-canvas::before {
@@ -32,6 +37,7 @@
   border-style: solid;
   border-width: 20px 20px 0 0;
   border-color: var(--active-canvas-highlight) transparent transparent transparent;
+  pointer-events: none;
 }
 
 .active-canvas::after {
@@ -39,6 +45,7 @@
   position: absolute;
   inset: 0;
   border: 3px solid var(--active-canvas-highlight);
+  pointer-events: none;
 }
 
 .canvas-label {
@@ -48,4 +55,5 @@
   height: 100%;
   color: white;
   transform: rotate(90deg);
+  pointer-events: none;
 }

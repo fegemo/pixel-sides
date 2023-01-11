@@ -45,8 +45,12 @@ export class MultiCanvasPlugin extends Plugin {
     this.#containerEl.addEventListener('click', this.#canvasClicked.bind(this))
     this.#activeCanvas.addListener(this.setActiveCanvas.bind(this))
 
-    // binds canvas content to the main
+    // 2-way data binding for canvases:
+    // binds canvas content to the main canvas: when the main canvas changes, update the active other canvas
     editor.addEventListener('canvaschange', this.updateActiveCanvas.bind(this))
+    // when the active other canvas is changed, update the main canvas
+    editor.addEventListener('canvaschange', this.updateMainCanvas.bind(this))
+
 
     // activates first canvas through a setup command and adds clear setup for correct ctrl+z/y
     const command = new MultiCanvasPlugin.CanvasChangeCommand(this, this.canvases[0])
@@ -65,10 +69,10 @@ export class MultiCanvasPlugin extends Plugin {
     let canvasEl = e.target.closest('.' + MultiCanvasPlugin.individualCanvasClass) || 
       e.target.closest('.' + MultiCanvasPlugin.canvasContainerClass)?.querySelector('.' + MultiCanvasPlugin.individualCanvasClass)
     if (!canvasEl) return
+    if (canvasEl.classList.contains('ai-dragging')) return
+
     const canvas = this.canvases.find(canvas => canvas.elementId === canvasEl.id)
 
-
-    // this._changeCanvas(clickedCanvas)
     // creates a command so it gets recorded to the history
     // and ctrl+z properly knows on which canvas to undo
     const command = new MultiCanvasPlugin.CanvasChangeCommand(this, canvas)
@@ -77,23 +81,40 @@ export class MultiCanvasPlugin extends Plugin {
   }
 
   setActiveCanvas(canvas, previous) {
-    // 1. visualmente desativa o anterior e ativa o novo
+    // 1. visually deactivates the previous canvas and activates the new one
     if (previous) {
       previous.deactivate()
     }
     canvas.activate()
-
-    // 2. definir conteúdo do main-canvas como o deste
+    
+    // 2. set the main-canvas content as this other-canvas content
     this.#editor.canvas.clear()
     this.#editor.canvas.restore(canvas.el)
   }
 
   updateActiveCanvas(e) {
-    this.#activeCanvas.get().updateContent(e.detail.canvas.el)
+    // check if it's the main-canvas that has been changed
+    if (e.detail.canvas === this.#editor.canvas) {
+      // the main-canvas is tainted: let's update the active one
+      this.#activeCanvas.get().updateContent(e.detail.canvas.el)
+    }
+  }
+  
+  updateMainCanvas(e) {
+    // some other-canvas is tainted: if it's the active one, update the main-canvas
+    const activeCanvas = this.#activeCanvas.get()
+    if (activeCanvas === e.detail.canvas) {
+      this.#editor.canvas.clear()
+      this.#editor.canvas.restore(e.detail.canvas.el)
+    }
   }
 
   get activeCanvas() {
     return this.#activeCanvas
+  }
+
+  get containerEl() {
+    return this.#containerEl
   }
 
   static get Canvas() {
@@ -188,7 +209,7 @@ export class MultiCanvasPlugin extends Plugin {
       #multiCanvasPlugin
 
       constructor(multiCanvasPlugin, targetCanvas) {
-        super('activate canvas', { targetCanvas })
+        super('activate canvas', { targetCanvas }, false)
         this.#multiCanvasPlugin = multiCanvasPlugin
       }
 
