@@ -113,9 +113,11 @@ class DragDropObject {
         },
         ondragenter(e) {
           e.target.classList.add('ai-dragged-hover')
+          e.relatedTarget.classList.add('ai-hovering-dropzone')
         },
         ondragleave(e) {
           e.target.classList.remove('ai-dragged-hover')
+          e.relatedTarget.classList.remove('ai-hovering-dropzone')
         },
       })
 

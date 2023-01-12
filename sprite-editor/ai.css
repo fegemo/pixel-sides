@@ -17,7 +17,7 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  align-content: flex-start;
+  align-content: center;
   gap: var(--gap);
   position: relative;
 }
@@ -84,10 +84,24 @@
 .ai-dragging {
   position: absolute;
   z-index: 10;
-  transition-property: scale, left, top;
+  transition-property: scale, left, top, opacity;
   transition-duration: 200ms;
   transition-timing-function: ease-out;
+  opacity: 1;
+  animation: playful 600ms ease-in-out 1s infinite;
   pointer-events: none;
+}
+
+.ai-hovering-dropzone {
+  opacity: 0.8;
+  animation-play-state: paused;
+}
+
+@keyframes playful {
+  0% { rotate: 0deg; }
+  25% { rotate: 5deg; }
+  75% { rotate: -5deg; }
+  1000% { rotate: 0deg; }
 }
 
 .ai-dropped {
@@ -115,7 +129,7 @@
   --dash-width: 2px;
   --dropzone-border-color: var(--highlight-fg-color);
   position: absolute;
-  inset: 0;
+  inset: 12%;
   display: flex;
   flex-direction: column;
   justify-content: center;
