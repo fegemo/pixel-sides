@@ -46,31 +46,37 @@ export class DomainTransferPlugin extends Plugin {
       draggedData: (e) => {
         const draggedEl = e.target
         const view = this.#views.find(view => view.containsElement(draggedEl))
+        const canvas = view.canvasFrom(draggedEl)
 
         return {
-          source: view.canvas,
+          source: canvas,
           sourceDomain: view.domain,
-          sourceView: view,
-          draggedEl
+          sourceView: view
         }
       }
     })
 
     // copy the canvas onto the target dropzone
     draggable.dropOn('.multi-canvas-container', (e, draggedData, droppedData) => {
-      const { draggedEl } = draggedData
+      const { source } = draggedData
       const { target } = droppedData
+      
+      if (source === target) {
+        e.rejectAction()
+        return
+      }
 
-      const loadImageCommand = new LoadImageCommand(draggedEl, target)
+      const loadImageCommand = new LoadImageCommand(source.el, target)
 
       editor.executeCommand(loadImageCommand)
       editor.recordCommand(loadImageCommand)
     }, {
-      accept: '.ai-preview-multi-container .other-canvas',
+      accept: '.other-canvas',
       actionDescription: 'Copy image here',
       droppedData: (e) => {
         const canvasId = e.target.closest('.js-canvas-container')?.querySelector('.other-canvas')?.id
         const view = this.#views.find(view => view.canvas.elementId === canvasId)
+
         return {
           target: view.canvas,
           targetDomain: view.domain,
@@ -86,7 +92,7 @@ export class DomainTransferPlugin extends Plugin {
 
       this.generate(source, target, targetView)
     }, {
-      accept: '.multi-canvas-container .other-canvas',
+      accept: '.other-canvas',
       actionDescription: (e, draggedData, droppedData) => {
         const { source } = draggedData
         const { target } = droppedData
@@ -152,8 +158,8 @@ export class DomainTransferPlugin extends Plugin {
   }
 
   async generate(source, target, targetView) {
-    const sourceDomain = source.id
-    const targetDomain = target.id
+    const sourceDomain = source.domain
+    const targetDomain = target.domain
     console.log(`Generating ${targetDomain} from ${sourceDomain}`)
 
     const numberOfSuggestions = this.#numberOfSuggestions.get()
@@ -213,7 +219,7 @@ export class DomainTransferPlugin extends Plugin {
         if (toCreate > 0) {
           for (let c = 0; c < toCreate; c++) {
             const multiCanvasPlugin = this.#editor.plugins['multi-canvas-plugin']
-            this.suggestionCanvases.push(multiCanvasPlugin.requestAsideCanvas(`${this.domain}-suggestion-${c + 1}`, 'ai-preview'))
+            this.suggestionCanvases.push(multiCanvasPlugin.requestAsideCanvas(`${this.domain}-suggestion-${c + 1}`, 'ai-preview', this.domain))
           }
           this.suggestionCanvases.forEach((sc, c) => {
             this.#multiPreviewEl.insertBefore(
@@ -230,7 +236,18 @@ export class DomainTransferPlugin extends Plugin {
         }
       }
 
+      canvasFrom(element) {
+        // returns the canvas which the element represents
+        const viewCanvases = [this.canvas, ...this.suggestionCanvases]
+        for (let canvas of viewCanvases) {
+          if (canvas.el.closest('.js-canvas-container')?.contains(element)) {
+            return canvas
+          }
+        }
+      }
+
       containsElement(element) {
+        // returns whether the view contains some element
         let contains = false
         contains ||= this.canvas.el === element
         contains ||= !!this.suggestionCanvases.find(sc => sc.el === element)

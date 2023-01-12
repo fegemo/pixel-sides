@@ -18,7 +18,8 @@ export class MultiCanvasPlugin extends Plugin {
     for (let c = 0; c < canvasIds.length; c++) {
       const id = canvasIds[c]
       const name = labels[c]
-      this.canvases.push(new MultiCanvasPlugin.Canvas(id, name))
+      const domain = id
+      this.canvases.push(new MultiCanvasPlugin.Canvas(id, name, domain))
     }
   }
 
@@ -59,8 +60,8 @@ export class MultiCanvasPlugin extends Plugin {
     this.canvases.forEach(canvas => editor.addSetupCommand(new MultiCanvasPlugin.ClearCanvasCommand(canvas)))
   }
 
-  requestAsideCanvas(id, prefix) {
-    const newCanvas = new MultiCanvasPlugin.Canvas(id, '', prefix)
+  requestAsideCanvas(id, prefix, domain) {
+    const newCanvas = new MultiCanvasPlugin.Canvas(id, '', domain, prefix)
     this.canvases.push(newCanvas)
     return newCanvas
   }
@@ -121,15 +122,17 @@ export class MultiCanvasPlugin extends Plugin {
     return class Canvas {
       #id
       #name
+      #domain
       #containerEl
       #canvasEl
       #ctx
       #prefix
       #canvasSize
 
-      constructor(id, name, prefix = 'multi-canvas') {
+      constructor(id, name, domain, prefix = 'multi-canvas') {
         this.#id = id
         this.#name = name
+        this.#domain = domain
         this.#prefix = prefix
         this.updateSize = this.updateSize.bind(this)
       }
@@ -150,10 +153,6 @@ export class MultiCanvasPlugin extends Plugin {
         canvasSize.addListener(this.updateSize)
 
         return this.#containerEl
-      }
-
-      get elementId() {
-        return this.#prefix + '-' + this.id
       }
 
       updateSize(size) {
@@ -200,6 +199,14 @@ export class MultiCanvasPlugin extends Plugin {
 
       get id() {
         return this.#id
+      }
+
+      get domain() {
+        return this.#domain
+      }
+
+      get elementId() {
+        return this.#prefix + '-' + this.id
       }
     }
   }

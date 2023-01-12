@@ -29,10 +29,12 @@ class DragDropObject {
           end(e) {
             const draggedEl = e.target
             const droppedOnDropzone = !!e.dropzone
+            const dropRejected = e.rejected
+
             draggedEl.classList.add('ai-dropped')
             draggedEl.addEventListener('transitionend', () => draggedEl.remove(), { once: true })
             
-            const dragResultClass = droppedOnDropzone ? 'ai-dropped-vanish' : 'ai-dropped-return'
+            const dragResultClass = droppedOnDropzone && !dropRejected ? 'ai-dropped-vanish' : 'ai-dropped-return'
             setImmediate(() => draggedEl.classList.add(dragResultClass))
           }
         }
@@ -87,10 +89,12 @@ class DragDropObject {
       .dropzone({
         accept: options?.accept,
         ondrop: (e) => {
-          const draggedData = e.draggable?.data
+          const draggedData = e.draggable.data
           const droppedData = callOrReturn(options, 'droppedData', null, [e])
           
           // calls the function registered for the DROP action
+          // and allows it to reject the action
+          e.rejectAction = () => e.dragEvent.rejected = true
           callback(e, draggedData, droppedData)
           
           e.target.classList.remove('ai-droppable')
