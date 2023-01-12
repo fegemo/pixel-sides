@@ -2,17 +2,13 @@ import { Plugin } from './plugin.js'
 import { selectModel } from '../generators/model.js'
 import { DOMAINS } from '../generators/config.js'
 import { Observable, ComputedProgressObservable } from '../observable.js'
-import { range } from '../py-util.js'
+import { range } from '../functional-util.js'
 import { Command } from '../commands.js'
-// import 'https://cdn.interactjs.io/v1.10.16/auto-start/index.js'
-// import 'https://cdn.interactjs.io/v1.10.16/actions/drag/index.js'
-// import 'https://cdn.interactjs.io/v1.10.16/actions/resize/index.js'
-// import 'https://cdn.interactjs.io/v1.10.16/modifiers/index.js'
-// import 'https://cdn.interactjs.io/v1.10.16/dev-tools/index.js'
-import interact from 'https://cdn.interactjs.io/v1.10.14/interactjs/index.js'
-// import interact from 'https://cdn.interactjs.io/v1.9.20/interactjs/index.js'
+
 // TODO?: extract common behavior to an abstract DomainTransferPlugin
 // and create SingleInputDomainTransferPlugin and MultiInputDomain...
+import { allowDrag } from '../drag-and-drop.js'
+
 export class DomainTransferPlugin extends Plugin {
   #canvasIds
   #editor
@@ -46,101 +42,66 @@ export class DomainTransferPlugin extends Plugin {
     this.#views = this.#canvases.map(canvas => new DomainTransferPlugin.View(canvas, new DomainTransferPlugin.ProgressBar(canvas.name, 0), this.#previewEl, this.#numberOfSuggestions))
     this.#views.forEach(view => view.createDom(editor, this))
 
-    // allow dragging multi-canvas views to the suggestions to ask for image generation:
-    // dragged view: source domain // which dropzone means the target domain
-    this.#containerEl.querySelectorAll('.multi-canvas-container').forEach(el => {
-      const dropzoneEl = document.createElement('div')
-      dropzoneEl.classList.add('ai-dropzone')
-      dropzoneEl.dataset.dropActionLabel = 'Copy image here'
-      el.appendChild(dropzoneEl)
+    const draggable = allowDrag('.other-canvas', {
+      draggedData: (e) => {
+        const draggedEl = e.target
+        const view = this.#views.find(view => view.containsElement(draggedEl))
+
+        return {
+          source: view.canvas,
+          sourceDomain: view.domain,
+          sourceView: view,
+          draggedEl
+        }
+      }
     })
-    interact('.multi-canvas-container .other-canvas')
-      .draggable({
-        manualStart: true,
-        listeners: {
-          move(e) {
-            const draggedEl = e.target
-            const x = (parseFloat(e.target.dataset.x) || 0) + e.dx
-            const y = (parseFloat(e.target.dataset.y) || 0) + e.dy
 
-            draggedEl.style.translate = `${x}px ${y}px`
-            draggedEl.dataset.x = x
-            draggedEl.dataset.y = y
-          },
-          end(e) {
-            const draggedEl = e.target
-            const droppedOnDropzone = !!e.dropzone
-            draggedEl.addEventListener('transitionend', () => draggedEl.remove(), { once: true })
+    // copy the canvas onto the target dropzone
+    draggable.dropOn('.multi-canvas-container', (e, draggedData, droppedData) => {
+      const { draggedEl } = draggedData
+      const { target } = droppedData
 
-            if (droppedOnDropzone) {
-              draggedEl.classList.add('ai-dropped-on-dropzone')
-              setImmediate(() => {
-                draggedEl.style.scale = 0
-                draggedEl.style.opacity = 0
-              })
-            } else {
-              draggedEl.classList.add('ai-dropped-out-of-zone')
-              setImmediate(() => {
-                draggedEl.style.scale = 1
-                draggedEl.style.translate = 0
-                draggedEl.style.opacity = 1
-                draggedEl.style.left = 0
-                draggedEl.style.top = 0
-              })
-            }
-          }
+      const loadImageCommand = new LoadImageCommand(draggedEl, target)
+
+      editor.executeCommand(loadImageCommand)
+      editor.recordCommand(loadImageCommand)
+    }, {
+      accept: '.ai-preview-multi-container .other-canvas',
+      actionDescription: 'Copy image here',
+      droppedData: (e) => {
+        const canvasId = e.target.closest('.js-canvas-container')?.querySelector('.other-canvas')?.id
+        const view = this.#views.find(view => view.canvas.elementId === canvasId)
+        return {
+          target: view.canvas,
+          targetDomain: view.domain,
+          targetView: view
         }
-      })
-      .on('move', (e) => {
-        if (e.interaction.pointerIsDown && !e.interaction.interacting()) {
-          const original = e.currentTarget
-          const clone = original.cloneNode(true)
-          clone.classList.add('ai-dragging')
-          clone.style.width = original.offsetWidth + 'px'
-          clone.style.height = original.offsetHeight + 'px'
-          let shiftX = e.offsetX
-          let shiftY = e.offsetY
-          clone.style.left = (-original.offsetWidth / 2 + shiftX)+ 'px'
-          clone.style.top = (-original.offsetHeight / 2 + shiftY)+ 'px'
+      }
+    })
 
-          clone.style.transformOrigin = 'center center'
-          if (original instanceof HTMLCanvasElement) {
-            const ctx = clone.getContext('2d')
-            ctx.drawImage(original, 0, 0)
-          }
-          setImmediate(() => clone.style.scale = 0.5)
+    // generate images from a source domain (dragged other-canvas) in a target (dropzone)
+    draggable.dropOn('.ai-preview-multi-container', (e, draggedData, droppedData) => {
+      const { source } = draggedData
+      const { target, targetView } = droppedData
 
-          original.closest('.multi-canvas-container').appendChild(clone)
-          e.interaction.start({ name: 'drag' }, e.interactable, clone)
+      this.generate(source, target, targetView)
+    }, {
+      accept: '.multi-canvas-container .other-canvas',
+      actionDescription: (e, draggedData, droppedData) => {
+        const { source } = draggedData
+        const { target } = droppedData
+        return `Generate ${target.name} from ${source.name}`
+      },
+      droppedData: (e) => {
+        const aiPreviewDropzone = e.target
+        const view = this.#views.find(view => view.containsElement(aiPreviewDropzone))
+        return {
+          target: view.canvas,
+          targetDomain: view.domain,
+          targetView: view
         }
-      })
-    interact('.multi-canvas-container .ai-dropzone')
-      .dropzone({
-        accept: '.ai-preview-multi-container .other-canvas',
-        ondrop: (e) => {
-          const target = this.#canvases.find(canvas => canvas.elementId === e.target.closest('.multi-canvas-container').querySelector('.other-canvas').id)
-          const sourceCanvasEl = e.relatedTarget
-          const loadImageCommand = new LoadImageCommand(sourceCanvasEl, target)
-          
-          editor.executeCommand(loadImageCommand)
-          editor.recordCommand(loadImageCommand)
-          
-          e.target.classList.remove('ai-droppable')
-          e.target.classList.remove('ai-dragged-hover')
-        },
-        ondropactivate(e) {
-          e.target.classList.add('ai-droppable')
-        },
-        ondropdeactivate(e) {
-          e.target.classList.remove('ai-droppable')
-        },
-        ondragenter(e) {
-          e.target.classList.add('ai-dragged-hover')
-        },
-        ondragleave(e) {
-          e.target.classList.remove('ai-dragged-hover')
-        }        
-      })
+      }
+    })
   }
 
   async install(editor) {
@@ -212,6 +173,9 @@ export class DomainTransferPlugin extends Plugin {
   }
 
   static get View() {
+    // a View represents a domain, has a multi-canvas-plugin canvas
+    // and one or many suggestion canvases
+    // it creates DOM for the suggestion canvases
     return class View {
       #numberOfSuggestions
       #editor
@@ -233,39 +197,6 @@ export class DomainTransferPlugin extends Plugin {
         const template = `<div class="ai-preview-multi-container"></div>`
         this.#multiPreviewEl = document.createRange().createContextualFragment(template).firstElementChild
         this.#containerEl.appendChild(this.#multiPreviewEl)
-
-        // set up each suggestion area as a dropzone
-        // the dropzone has a target domain and the dragged element represents the source
-        const dropzoneEl = document.createElement('div')
-        dropzoneEl.classList.add('ai-dropzone')
-        this.#multiPreviewEl.appendChild(dropzoneEl)
-        interact(dropzoneEl).dropzone({
-          accept: '.multi-canvas-container .other-canvas',
-          ondrop: (e) => {
-            const source = plugin.#canvases.find(canvas => canvas.elementId === e.relatedTarget.id)
-            const target = this.canvas
-            plugin.generate(source, target, this)
-
-            e.target.classList.remove('ai-droppable')
-            e.target.classList.remove('ai-dragged-hover')
-          },
-          ondropactivate: (e) => {
-            e.target.classList.add('ai-droppable')
-
-            const source = plugin.#canvases.find(canvas => canvas.elementId === e.relatedTarget.id)
-            const target = this.canvas
-            e.target.dataset.dropActionLabel = `Generate ${target.name} from ${source.name}`
-          },
-          ondropdeactivate(e) {
-            e.target.classList.remove('ai-droppable')
-          },
-          ondragenter(e) {
-            e.target.classList.add('ai-dragged-hover')
-          },
-          ondragleave(e) {
-            e.target.classList.remove('ai-dragged-hover')
-          }
-        })
 
         // creates 1 canvas per suggestion
         this.#numberOfSuggestions.addListener(this.#createSuggestionCanvases.bind(this))
@@ -291,75 +222,21 @@ export class DomainTransferPlugin extends Plugin {
             )
           })
 
-          // TODO?: set up suggestions as draggables (here? cant we delegate?)
-          for (let canvas of this.suggestionCanvases) {
-            interact(canvas.el).draggable({
-              accept: '.ai-preview-container .other-canvas',
-              manualStart: true,
-              listeners: {
-                move(e) {
-                  const x = (parseFloat(e.target.dataset.x) || 0) + e.dx
-                  const y = (parseFloat(e.target.dataset.y) || 0) + e.dy
-
-                  const draggedEl = e.target
-                  draggedEl.style.translate = `${x}px ${y}px`
-                  draggedEl.dataset.x = x
-                  draggedEl.dataset.y = y
-                },
-                end(e) {
-                  const draggedEl = e.target
-                  const droppedOnDropzone = !!e.dropzone
-                  draggedEl.addEventListener('transitionend', () => draggedEl.remove(), { once: true })
-
-                  if (droppedOnDropzone) {
-                    draggedEl.classList.add('ai-dropped-on-dropzone')
-                    setImmediate(() => {
-                      draggedEl.style.scale = 0
-                      draggedEl.style.opacity = 0
-                    })
-                  } else {
-                    draggedEl.classList.add('ai-dropped-out-of-zone')
-                    setImmediate(() => {
-                      draggedEl.style.scale = 1
-                      draggedEl.style.translate = 0
-                      draggedEl.style.opacity = 1
-                    })
-                  }
-                }
-              }
-            })
-            .on('move', (e) => {
-              if (e.interaction.pointerIsDown && !e.interaction.interacting()) {
-                const original = e.currentTarget
-                const clone = original.cloneNode(true)
-                clone.classList.add('ai-dragging')
-                clone.style.width = original.offsetWidth + 'px'
-                clone.style.height = original.offsetHeight + 'px'
-                clone.style.left = 0
-                clone.style.top = 0
-                clone.style.transformOrigin = 'center center'
-                if (original instanceof HTMLCanvasElement) {
-                  const ctx = clone.getContext('2d')
-                  ctx.drawImage(original, 0, 0)
-                }
-                setImmediate(() => clone.style.scale = 0.5)
-
-                original.closest('.js-canvas-container').appendChild(clone)
-                e.interaction.start({ name: 'drag' }, e.interactable, clone)
-              }                  
-            })
-          }
-
         } else if (toCreate < 0) {
           const indexFromWhichToRemove = this.suggestionCanvases.length + toCreate
           const deleted = this.suggestionCanvases.splice(indexFromWhichToRemove, -1 * toCreate)
-          // TODO: remove interact.js handlers of the suggestion elements being removed
+
           deleted.forEach(del => del.remove())
         }
       }
 
-      get generateButton() {
-        return this.#multiPreviewEl.querySelector('button.ai-generate')
+      containsElement(element) {
+        let contains = false
+        contains ||= this.canvas.el === element
+        contains ||= !!this.suggestionCanvases.find(sc => sc.el === element)
+        contains ||= this.#multiPreviewEl.contains(element)
+        contains ||= this.canvas.el.closest('.js-canvas-container').contains(element)
+        return contains
       }
 
       get domain() {

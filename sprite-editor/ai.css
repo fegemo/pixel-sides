@@ -90,16 +90,24 @@
   pointer-events: none;
 }
 
-.ai-dropped-on-dropzone {
+.ai-dropped {
   transition-property: translate, scale, opacity, left, top;
   transition-duration: 200ms;
-  transition-timing-function: ease-out;
 }
 
-.ai-dropped-out-of-zone {
-  transition-property: translate, scale, opacity, left, top;
-  transition-duration: 200ms;
+.ai-dropped-vanish {
+  scale: 0 !important;
+  opacity: 0 !important;
   transition-timing-function: ease-in;
+}
+
+.ai-dropped-return {
+  scale: 1 !important;
+  translate: 0 !important;
+  opacity: 1 !important;
+  left: 0 !important;
+  top: 0 !important;
+  transition-timing-function: ease-out;
 }
 
 .ai-dropzone {
